@@ -3,7 +3,7 @@ const session = require('express-session');
 const path    = require('path');
 const fs      = require('fs');
 
-try { require('dotenv').config(); } catch(_) {}
+try { require('dotenv').config({ path: require('path').join(__dirname, '.env') }); } catch(_) {}
 
 const app  = express();
 const PORT = process.env.PORT || 3120;
@@ -101,16 +101,9 @@ function requireAuth(req, res, next) {
 // ── Dashboard — inject API key into HTML ──────────────────────────────────
 app.get('/', requireAuth, (req, res) => {
   let html = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
-  // Replace the localStorage approach with the injected key
-  html = html.replace(
-    `function getApiKey() { return localStorage.getItem('ig_api_key') || ''; }`,
-    `function getApiKey() { return '${AIRTABLE_API_KEY}'; }`
-  );
-  // Hide the setup modal entirely
-  html = html.replace(
-    `if (!getApiKey()) {\n  document.getElementById('setupModal').style.display = 'flex';\n} else {\n  loadAll();\n}`,
-    `document.getElementById('setupModal').style.display = 'none';\nloadAll();`
-  );
+  // Inject API key as a global before </head>
+  const inject = `<script>window.__IG_API_KEY__ = '${AIRTABLE_API_KEY}';</script>`;
+  html = html.replace('</head>', inject + '\n</head>');
   res.send(html);
 });
 

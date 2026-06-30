@@ -317,7 +317,10 @@
 const BASE_ID      = 'appYCG4Sfa4AI0s6W';
 const ACCOUNTS_BASE= 'appkOOpwWXWRxYjbH';
 
-function getApiKey() { return localStorage.getItem('ig_api_key') || ''; }
+function getApiKey() {
+  // Injected by server (Render) → fallback to localStorage for local use
+  return window.__IG_API_KEY__ || localStorage.getItem('ig_api_key') || '';
+}
 function saveApiKey() {
   const k = document.getElementById('apiKeyInput').value.trim();
   if (!k) return;
