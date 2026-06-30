@@ -1,0 +1,25 @@
+name: Daily IG Plan
+
+on:
+  schedule:
+    - cron: '0 22 * * *'   # 22:00 UTC = 00:00 Ljubljana (CEST)
+  workflow_dispatch:         # manual trigger
+
+jobs:
+  run-daily-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Run daily plan
+        env:
+          AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          ACCOUNTS_BASE_ID: ${{ secrets.ACCOUNTS_BASE_ID }}
+        run: node daily_plan.js

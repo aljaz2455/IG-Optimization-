@@ -352,6 +352,7 @@
 // ─── Config ───────────────────────────────────────────────────────────────
 const BASE_ID      = 'appYCG4Sfa4AI0s6W';
 const ACCOUNTS_BASE= 'appkOOpwWXWRxYjbH';
+const CONTENT_BASE = 'app8A4YjfUtQACQvb';
 
 // API key injected by Render build (sed replaces placeholder), fallback to localStorage for local dev
 const __INJECTED_KEY__ = '__AIRTABLE_KEY__';
@@ -370,8 +371,9 @@ function saveApiKey() {
   loadAll();
 }
 
-const AT      = `https://api.airtable.com/v0/${BASE_ID}`;
-const AT_ACC  = `https://api.airtable.com/v0/${ACCOUNTS_BASE}`;
+const AT          = `https://api.airtable.com/v0/${BASE_ID}`;
+const AT_ACC      = `https://api.airtable.com/v0/${ACCOUNTS_BASE}`;
+const AT_CONTENT  = `https://api.airtable.com/v0/${CONTENT_BASE}`;
 const HDR = () => ({ 'Authorization': `Bearer ${getApiKey()}` });
 
 // ─── State ────────────────────────────────────────────────────────────────
@@ -400,6 +402,45 @@ async function atFetch(baseUrl, table, filter) {
   return rows;
 }
 
+async function listContentTables() {
+  const r = await fetch(`https://api.airtable.com/v0/meta/bases/${CONTENT_BASE}/tables`, { headers: HDR() });
+  const d = await r.json();
+  return (d.tables || []).map(t => t.name);
+}
+
+async function loadContentBase() {
+  const tables = await listContentTables();
+  const all = [];
+  await Promise.all(tables.map(async tbl => {
+    const modelName = tbl.includes(' - ') ? tbl.split(' - ')[0].trim() : tbl;
+    try {
+      const rows = await atFetch(AT_CONTENT, tbl);
+      for (const r of rows) {
+        const types = Array.isArray(r['Type of content']) ? r['Type of content'] : (r['Type of content'] ? [r['Type of content']] : []);
+        const angles = Array.isArray(r['Marketing Angle']) ? r['Marketing Angle'] : (r['Marketing Angle'] ? [r['Marketing Angle']] : []);
+        all.push({
+          id: r.id,
+          Model: modelName,
+          Table: tbl,
+          Status: (r['Status'] || '').trim(),
+          Type: types[0] || '—',
+          Types: types,
+          SetName: r['SET name'] || '',
+          ContentPiece: r['Content Piece'] || '',
+          DateToPost: r['Date to post'] || '',
+          DateUploaded: r['Date uploaded'] || '',
+          Background: r['Background'] || '',
+          Outfit: r['Outfit Number'] || '',
+          MarketingAngles: angles,
+          FileURL: r['url'] || '',
+          ContentPlan: r['Content plan'] || '',
+        });
+      }
+    } catch(e) { console.warn('Skipping table', tbl, e.message); }
+  }));
+  return all;
+}
+
 // ─── Tab switching ────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
@@ -416,79 +457,78 @@ function showTab(name) {
 
 // ─── Ready to Post tab ────────────────────────────────────────────────────
 function renderReady() {
-  const typeFilter    = document.getElementById('readyFilter').value;
-  const accountFilter = document.getElementById('readyAccount').value;
+  const typeFilter  = document.getElementById('readyFilter').value;
+  const modelFilter = document.getElementById('readyAccount').value;
 
-  // Populate account dropdown
-  const accounts = [...new Set(state.content.map(c => c.Account).filter(Boolean))].sort();
+  const ready = state.content.filter(c => c.Status === 'Ready For Posting');
+
+  // Populate model dropdown
+  const models = [...new Set(ready.map(c => c.Model).filter(Boolean))].sort();
   const sel = document.getElementById('readyAccount');
   const cur = sel.value;
-  sel.innerHTML = '<option value="all">Vsi računi</option>' +
-    accounts.map(a => `<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
+  sel.innerHTML = '<option value="all">Vsi modeli</option>' +
+    models.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
 
-  const ready = state.content.filter(c => c.Status === 'Available' || !c.Status);
   const filtered = ready.filter(c =>
-    (typeFilter === 'all' || c.Type === typeFilter) &&
-    (accountFilter === 'all' || c.Account === accountFilter)
+    (typeFilter === 'all' || c.Types.includes(typeFilter)) &&
+    (modelFilter === 'all' || c.Model === modelFilter)
   );
 
-  document.getElementById('rp_stories').textContent = ready.filter(c => c.Type === 'Story').length;
-  document.getElementById('rp_reels').textContent   = ready.filter(c => c.Type === 'Reel').length;
-  document.getElementById('rp_trial').textContent   = ready.filter(c => c.IsTrialReady).length;
+  document.getElementById('rp_stories').textContent = ready.filter(c => c.Types.includes('STORY') || c.Types.includes('Story')).length;
+  document.getElementById('rp_reels').textContent   = ready.filter(c => c.Types.includes('REEL')  || c.Types.includes('Reel')).length;
+  document.getElementById('rp_trial').textContent   = '—';
   document.getElementById('rp_total').textContent   = ready.length;
 
   if (!filtered.length) {
     document.getElementById('readyContainer').innerHTML =
-      `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni razpoložljivega contentta. Dodaj v Airtable → ContentLibrary.</div></div>`;
+      `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni contentta z "Ready For Posting" statusom v Airtable.</div></div>`;
     return;
   }
 
-  // Group by account
+  // Group by model
   const grouped = {};
   for (const c of filtered) {
-    const acc = c.Account || '—';
-    if (!grouped[acc]) grouped[acc] = [];
-    grouped[acc].push(c);
+    const grp = c.Model || '—';
+    if (!grouped[grp]) grouped[grp] = [];
+    grouped[grp].push(c);
   }
 
   let html = '';
-  for (const [acc, items] of Object.entries(grouped)) {
-    const stories = items.filter(c => c.Type === 'Story').length;
-    const reels   = items.filter(c => c.Type === 'Reel').length;
+  for (const [model, items] of Object.entries(grouped)) {
+    const reels   = items.filter(c => c.Types.includes('REEL') || c.Types.includes('Reel')).length;
+    const stories = items.filter(c => c.Types.includes('STORY') || c.Types.includes('Story')).length;
 
     html += `
     <div class="account-header">
-      <div class="account-avatar">${(acc[0]||'?').toUpperCase()}</div>
+      <div class="account-avatar">${(model[0]||'?').toUpperCase()}</div>
       <div>
-        <div class="account-name">${acc}</div>
-        <div class="account-sub">${stories} storij · ${reels} reelev ready</div>
+        <div class="account-name">${model}</div>
+        <div class="account-sub">${reels} reelev · ${stories} storij · ${items.length} skupaj</div>
       </div>
     </div>
-    <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:8px">`;
+    <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:8px">`;
 
     for (const c of items) {
-      const isStory = c.Type === 'Story';
-      const borderColor = isStory ? 'var(--blue)' : 'var(--purple)';
-      const icon        = isStory ? '📸' : '🎬';
-      const pillClass   = isStory ? 'pill-blue' : 'pill-purple';
-      const trialBadge  = c.IsTrialReady ? '<span class="pill pill-pink" style="margin-left:4px">🔁 trial</span>' : '';
+      const isReel = c.Types.includes('REEL') || c.Types.includes('Reel');
+      const borderColor = isReel ? 'var(--purple)' : 'var(--blue)';
+      const icon        = isReel ? '🎬' : '📸';
+      const pillClass   = isReel ? 'pill-purple' : 'pill-blue';
 
       html += `
       <div style="background:var(--surface2);border:1px solid var(--border);border-top:3px solid ${borderColor};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-        ${c.ThumbnailURL
-          ? `<img src="${c.ThumbnailURL}" alt="" style="width:100%;aspect-ratio:9/16;object-fit:cover" onerror="this.style.display='none'">`
-          : `<div style="width:100%;aspect-ratio:9/16;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:32px">${icon}</div>`
-        }
-        <div style="padding:10px 12px;flex:1;display:flex;flex-direction:column;gap:6px">
+        <div style="width:100%;aspect-ratio:9/16;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:48px;max-height:200px">${icon}</div>
+        <div style="padding:12px;flex:1;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-            <span class="pill ${pillClass}">${c.Type||'—'}</span>${trialBadge}
+            ${c.Types.map(t => `<span class="pill ${pillClass}">${t}</span>`).join('')}
           </div>
-          ${c.Description ? `<div style="font-size:12px;color:var(--text);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${c.Description}</div>` : ''}
-          ${c.Tags ? `<div style="font-size:11px;color:var(--muted)">${c.Tags}</div>` : ''}
-          <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap">
-            ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:3px 8px;border-radius:6px">↗ Odpri</a>` : ''}
+          ${c.SetName ? `<div style="font-size:13px;font-weight:600;color:var(--text)">${c.SetName}</div>` : ''}
+          ${c.MarketingAngles.length ? `<div style="font-size:11px;color:var(--muted)">${c.MarketingAngles.join(', ')}</div>` : ''}
+          ${c.DateToPost ? `<div style="font-size:11px;color:var(--green)">📅 Post: ${c.DateToPost}</div>` : ''}
+          ${c.Background ? `<div style="font-size:11px;color:var(--muted)">🎨 ${c.Background}</div>` : ''}
+          ${c.Outfit ? `<div style="font-size:11px;color:var(--muted)">👗 ${c.Outfit}</div>` : ''}
+          <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap;padding-top:4px">
+            ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:4px 10px;border-radius:6px">↗ Odpri v Air</a>` : ''}
           </div>
-          ${c.PostCount ? `<div style="font-size:10px;color:var(--muted)">Postano ${c.PostCount}× · avg ${fmt(c.AvgViews)} views</div>` : ''}
         </div>
       </div>`;
     }
@@ -510,7 +550,7 @@ async function loadAll() {
       atFetch(AT_ACC, 'Instagram Accounts'),
       atFetch(AT_ACC, 'Daily Stats'),
       atFetch(AT_ACC, 'Posting'),
-      atFetch(AT,     'ContentLibrary'),
+      loadContentBase(),
       atFetch(AT,     'Settings'),
     ]);
     state.allIgAccounts = igAccounts;
