@@ -1,0 +1,14 @@
+{
+  "name": "ig-optimization",
+  "version": "1.0.0",
+  "description": "Instagram daily posting plan optimizer",
+  "main": "daily_plan.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "plan": "node daily_plan.js",
+    "feedback": "node feedback.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}

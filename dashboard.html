@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IG Content Optimizer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --surface2: #22263a;
+    --border:   #2e3350;
+    --accent:   #e1306c;
+    --accent2:  #833ab4;
+    --accent3:  #fd1d1d;
+    --blue:     #4f9cf9;
+    --purple:   #c77dff;
+    --pink:     #ff6b9d;
+    --green:    #06d6a0;
+    --orange:   #ff9f43;
+    --yellow:   #ffd60a;
+    --red:      #ff4d6d;
+    --text:     #e8eaf6;
+    --muted:    #7b82a8;
+    --radius:   12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Topbar ── */
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .logo { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(45deg, var(--accent3), var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .topbar h1 { font-size: 17px; font-weight: 700; }
+  .topbar h1 span { background: linear-gradient(90deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .refresh-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: background .2s; }
+  .refresh-btn:hover { background: var(--border); }
+  .date-badge { background: var(--surface2); border: 1px solid var(--border); padding: 5px 12px; border-radius: 8px; font-size: 12px; color: var(--muted); }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 2px; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; overflow-x: auto; }
+  .tab { padding: 12px 18px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; font-weight: 500; transition: all .2s; white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Pages ── */
+  .page { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* ── Grid ── */
+  .grid { display: grid; gap: 16px; }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 900px) { .grid-4,.grid-3,.grid-2 { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .grid-4,.grid-3,.grid-2 { grid-template-columns: 1fr; } }
+
+  /* ── Cards ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .card-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .card-val { font-size: 28px; font-weight: 700; line-height: 1; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .kpi-pink   { border-top: 3px solid var(--accent); }
+  .kpi-purple { border-top: 3px solid var(--purple); }
+  .kpi-blue   { border-top: 3px solid var(--blue); }
+  .kpi-green  { border-top: 3px solid var(--green); }
+  .kpi-orange { border-top: 3px solid var(--orange); }
+  .kpi-warn   { border-top: 3px solid var(--yellow); }
+
+  /* ── Tables ── */
+  .tbl-wrap { overflow-x: auto; }
+  .tbl { width: 100%; border-collapse: collapse; min-width: 600px; }
+  .tbl th { background: var(--surface2); padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; white-space: nowrap; }
+  .tbl td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tr:hover td { background: rgba(255,255,255,.03); }
+
+  /* ── Pills ── */
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .pill-pink   { background: rgba(225,48,108,.15); color: var(--accent); }
+  .pill-purple { background: rgba(131,58,180,.2);  color: var(--purple); }
+  .pill-blue   { background: rgba(79,156,249,.15); color: var(--blue);   }
+  .pill-green  { background: rgba(6,214,160,.15);  color: var(--green);  }
+  .pill-orange { background: rgba(255,159,67,.15); color: var(--orange); }
+  .pill-yellow { background: rgba(255,214,10,.15); color: var(--yellow); }
+  .pill-red    { background: rgba(255,77,109,.15); color: var(--red);    }
+  .pill-muted  { background: var(--surface2);      color: var(--muted);  }
+
+  /* ── Account section ── */
+  .account-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; margin-top: 28px; }
+  .account-header:first-child { margin-top: 0; }
+  .account-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(45deg, var(--accent), var(--purple)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; border: 2px solid var(--border); }
+  .account-name { font-size: 15px; font-weight: 700; }
+  .account-sub  { font-size: 12px; color: var(--muted); }
+  .account-stats { margin-left: auto; display: flex; gap: 16px; }
+  .account-stat  { text-align: right; }
+  .account-stat-val  { font-size: 14px; font-weight: 700; }
+  .account-stat-label{ font-size: 11px; color: var(--muted); }
+
+  /* ── Slot cards ── */
+  .slots-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 8px; }
+  .slot-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; position: relative; }
+  .slot-card.story-slot  { border-left: 3px solid var(--blue); }
+  .slot-card.reel-new    { border-left: 3px solid var(--purple); }
+  .slot-card.reel-trial  { border-left: 3px solid var(--pink); }
+  .slot-card.empty-slot  { border-left: 3px solid var(--red); opacity: .7; }
+  .slot-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 6px; }
+  .slot-content { font-size: 12px; line-height: 1.4; color: var(--text); }
+  .slot-content.empty { color: var(--red); font-style: italic; }
+  .slot-status { margin-top: 8px; }
+  .slot-thumb { width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 6px; margin-bottom: 8px; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 28px; overflow: hidden; }
+  .slot-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+  .slot-thumb-placeholder { width: 100%; aspect-ratio: 9/16; background: var(--border); border-radius: 6px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); }
+
+  /* ── Section header ── */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .section-sub { font-size: 12px; color: var(--muted); }
+
+  /* ── Progress bar ── */
+  .progress-bar { background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 4px; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+
+  /* ── No data ── */
+  .no-data { text-align: center; padding: 48px; color: var(--muted); }
+  .no-data-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* ── Loading ── */
+  .loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: var(--muted); }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Date picker ── */
+  .date-picker-wrap { display: flex; align-items: center; gap: 8px; }
+  .date-picker-wrap label { font-size: 12px; color: var(--muted); }
+  .date-input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 5px 10px; border-radius: 7px; font-size: 12px; }
+  .date-input:focus { outline: 1px solid var(--accent); }
+
+  /* ── Chart container ── */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">📸</div>
+    <h1>IG <span>Optimizer</span></h1>
+  </div>
+  <div class="topbar-right">
+    <div class="date-badge" id="todayBadge">—</div>
+    <button class="refresh-btn" onclick="loadAll()">↺ Refresh</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('today')">📅 Danes</div>
+  <div class="tab" onclick="showTab('warmup')">🔥 Warmup</div>
+  <div class="tab" onclick="showTab('content')">🎬 Content</div>
+  <div class="tab" onclick="showTab('results')">📊 Rezultati</div>
+  <div class="tab" onclick="showTab('settings')">⚙️ Settings</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB: DANES
+     ════════════════════════════════════════════ -->
+<div class="page active" id="page-today">
+  <div class="section-header">
+    <div>
+      <div class="section-title">📅 Dnevni plan postanja</div>
+      <div class="section-sub">Kaj VA postavi danes na vsak račun</div>
+    </div>
+    <div class="date-picker-wrap">
+      <label>Datum:</label>
+      <input type="date" class="date-input" id="planDate" onchange="renderTodayPlan()">
+    </div>
+  </div>
+
+  <!-- KPI row -->
+  <div class="grid grid-4" style="margin-bottom:20px" id="todayKpis">
+    <div class="card kpi-pink"><div class="card-title">📸 Storiji danes</div><div class="card-val" id="kTotalStories">—</div><div class="card-sub">skupaj za vse račune</div></div>
+    <div class="card kpi-purple"><div class="card-title">🎬 Novi reeli</div><div class="card-val" id="kTotalReelsNew">—</div><div class="card-sub">nova objava</div></div>
+    <div class="card kpi-blue"><div class="card-title">🔁 Trial reeli</div><div class="card-val" id="kTotalReelsTrial">—</div><div class="card-sub">repost najboljšega</div></div>
+    <div class="card kpi-green"><div class="card-title">✅ Skupaj slotov</div><div class="card-val" id="kTotalSlots">—</div><div class="card-sub" id="kPostedSlots">— posted</div></div>
+  </div>
+
+  <div id="todayPlanContainer"><div class="loading"><div class="spinner"></div>Nalagam...</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB: WARMUP
+     ════════════════════════════════════════════ -->
+<div class="page" id="page-warmup">
+  <div class="section-header">
+    <div>
+      <div class="section-title">🔥 Warmup računi</div>
+      <div class="section-sub">Računi v ogrevanju — kdaj bodo pripravljeni za postanje</div>
+    </div>
+  </div>
+
+  <!-- KPI row -->
+  <div class="grid grid-4" style="margin-bottom:20px">
+    <div class="card kpi-orange"><div class="card-title">🔥 V warmup fazi</div><div class="card-val" id="wCountWarmup">—</div><div class="card-sub">čakajo na Live</div></div>
+    <div class="card kpi-green"><div class="card-title">✅ Live računi</div><div class="card-val" id="wCountLive">—</div><div class="card-sub">aktivni za postanje</div></div>
+    <div class="card kpi-red"><div class="card-title">🚫 Suspendirani</div><div class="card-val" id="wCountSuspended">—</div><div class="card-sub">blokirani</div></div>
+    <div class="card kpi-blue"><div class="card-title">📅 Avg dni do Live</div><div class="card-val" id="wAvgDaysLeft">—</div><div class="card-sub">za Warmup račune</div></div>
+  </div>
+
+  <div id="warmupContainer"><div class="loading"><div class="spinner"></div>Nalagam...</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB: CONTENT
+     ════════════════════════════════════════════ -->
+<div class="page" id="page-content">
+  <div class="section-header">
+    <div>
+      <div class="section-title">🎬 Content library</div>
+      <div class="section-sub">Razpoložljiv content po računu in tipu</div>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="grid grid-4" style="margin-bottom:20px" id="contentKpis">
+    <div class="card kpi-blue"><div class="card-title">📸 Storiji na voljo</div><div class="card-val" id="cStories">—</div><div class="card-sub" id="cStoriesSub">—</div></div>
+    <div class="card kpi-purple"><div class="card-title">🎬 Reeli na voljo</div><div class="card-val" id="cReels">—</div><div class="card-sub" id="cReelsSub">—</div></div>
+    <div class="card kpi-pink"><div class="card-title">🔁 Trial-ready reeli</div><div class="card-val" id="cTrialReady">—</div><div class="card-sub">za repost</div></div>
+    <div class="card kpi-orange"><div class="card-title">⏳ Skupaj content</div><div class="card-val" id="cTotal">—</div><div class="card-sub">vsi statusi</div></div>
+  </div>
+
+  <div id="contentContainer"><div class="loading"><div class="spinner"></div>Nalagam...</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB: REZULTATI
+     ════════════════════════════════════════════ -->
+<div class="page" id="page-results">
+  <div class="section-header">
+    <div>
+      <div class="section-title">📊 Performance rezultati</div>
+      <div class="section-sub">Dejanski doseg po postanju</div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid grid-4" style="margin-bottom:20px">
+    <div class="card kpi-pink"><div class="card-title">👁 Avg Views (Reel)</div><div class="card-val" id="rAvgViewsReel">—</div></div>
+    <div class="card kpi-blue"><div class="card-title">👁 Avg Views (Story)</div><div class="card-val" id="rAvgViewsStory">—</div></div>
+    <div class="card kpi-green"><div class="card-title">❤️ Avg Likes</div><div class="card-val" id="rAvgLikes">—</div></div>
+    <div class="card kpi-purple"><div class="card-title">📈 Skupaj zapisov</div><div class="card-val" id="rTotalPerf">—</div></div>
+  </div>
+
+  <!-- Followers growth chart -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">👥 Follower rast po računu (zadnjih 14 dni)</div>
+    <div class="chart-wrap"><canvas id="followersChart"></canvas></div>
+  </div>
+
+  <!-- Posting log KPIs -->
+  <div class="grid grid-3" style="margin-bottom:16px" id="postingKpis"></div>
+
+  <!-- Chart -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">📈 Skupni followers change po dnevu</div>
+    <div class="chart-wrap"><canvas id="perfChart"></canvas></div>
+  </div>
+
+  <!-- Table -->
+  <div class="card">
+    <div class="card-title">📋 Vsi rezultati</div>
+    <div class="tbl-wrap" id="resultsTableWrap">
+      <div class="loading"><div class="spinner"></div>Nalagam...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB: SETTINGS
+     ════════════════════════════════════════════ -->
+<div class="page" id="page-settings">
+  <div class="section-header">
+    <div>
+      <div class="section-title">⚙️ Settings</div>
+      <div class="section-sub">Konfiguracija sistema — uredi v Airtable</div>
+    </div>
+    <a href="https://airtable.com/appYCG4Sfa4AI0s6W" target="_blank" class="refresh-btn" style="text-decoration:none">Odpri Airtable ↗</a>
+  </div>
+
+  <div class="card" style="margin-bottom:16px" id="settingsCard">
+    <div class="loading"><div class="spinner"></div>Nalagam...</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">👤 Aktivni računi</div>
+    <div class="tbl-wrap" id="accountsTable">
+      <div class="loading"><div class="spinner"></div>Nalagam...</div>
+    </div>
+  </div>
+</div>
+
+<div id="setupModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#1a1d27;border:1px solid #2e3350;border-radius:16px;padding:32px;width:420px;max-width:90vw">
+    <div style="font-size:24px;margin-bottom:8px">🔑 API Key</div>
+    <div style="color:#7b82a8;font-size:13px;margin-bottom:20px">Vnesi Airtable Personal Access Token. Shrani se v browser (localStorage).</div>
+    <input id="apiKeyInput" type="password" placeholder="patXXX..." style="width:100%;background:#0f1117;border:1px solid #2e3350;border-radius:8px;color:#e8eaf6;padding:10px 14px;font-size:13px;margin-bottom:12px;font-family:monospace">
+    <button onclick="saveApiKey()" style="width:100%;background:#e1306c;border:none;color:#fff;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Shrani & naloži</button>
+  </div>
+</div>
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────
+const BASE_ID      = 'appYCG4Sfa4AI0s6W';
+const ACCOUNTS_BASE= 'appkOOpwWXWRxYjbH';
+
+function getApiKey() { return localStorage.getItem('ig_api_key') || ''; }
+function saveApiKey() {
+  const k = document.getElementById('apiKeyInput').value.trim();
+  if (!k) return;
+  localStorage.setItem('ig_api_key', k);
+  document.getElementById('setupModal').style.display = 'none';
+  loadAll();
+}
+
+const AT      = `https://api.airtable.com/v0/${BASE_ID}`;
+const AT_ACC  = `https://api.airtable.com/v0/${ACCOUNTS_BASE}`;
+const HDR = () => ({ 'Authorization': `Bearer ${getApiKey()}` });
+
+// ─── State ────────────────────────────────────────────────────────────────
+let state = { igAccounts: [], dailyStats: [], postingLog: [], content: [], plan: [], performance: [], settings: [] };
+let perfChart = null;
+let followersChart = null;
+
+// ─── Utils ────────────────────────────────────────────────────────────────
+function today() { return new Date().toISOString().split('T')[0]; }
+function fmt(n) { if (n == null || n === '') return '—'; if (n >= 1000) return (n/1000).toFixed(1)+'k'; return String(n); }
+function fmtChange(n) { if (n == null) return '—'; const s = n >= 0 ? '+' : ''; return `${s}${n}`; }
+
+async function atFetch(baseUrl, table, filter) {
+  const rows = [];
+  let offset;
+  do {
+    const p = new URLSearchParams({ pageSize: '100' });
+    if (filter) p.set('filterByFormula', filter);
+    if (offset) p.set('offset', offset);
+    const r = await fetch(`${baseUrl}/${encodeURIComponent(table)}?${p}`, { headers: HDR() });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    for (const rec of (d.records || [])) rows.push({ id: rec.id, ...rec.fields });
+    offset = d.offset;
+  } while (offset);
+  return rows;
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['today','warmup','content','results','settings'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (name === 'warmup')   renderWarmup();
+  if (name === 'results')  renderResults();
+  if (name === 'settings') renderSettings();
+}
+
+// ─── Load all ─────────────────────────────────────────────────────────────
+async function loadAll() {
+  const dateInput = document.getElementById('planDate');
+  if (!dateInput.value) dateInput.value = today();
+  document.getElementById('todayBadge').textContent = dateInput.value;
+
+  try {
+    const [igAccounts, dailyStats, postingLog, content, settings] = await Promise.all([
+      atFetch(AT_ACC, 'Instagram Accounts'),
+      atFetch(AT_ACC, 'Daily Stats'),
+      atFetch(AT_ACC, 'Posting'),
+      atFetch(AT,     'ContentLibrary'),
+      atFetch(AT,     'Settings'),
+    ]);
+    state.allIgAccounts = igAccounts;
+    state.igAccounts    = igAccounts.filter(a => a.Status === 'Live');
+    state.dailyStats  = dailyStats;
+    state.postingLog  = postingLog;
+    state.content     = content;
+    state.settings    = settings;
+    await loadPlanAndPerf();
+  } catch(e) {
+    console.error(e);
+    document.getElementById('todayPlanContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">⚠️</div><div>${e.message}</div><div style="margin-top:8px;font-size:12px;color:var(--muted)">Preveri API ključ in Base ID</div></div>`;
+  }
+}
+
+async function loadPlanAndPerf() {
+  const d = document.getElementById('planDate').value || today();
+  const [plan, perf] = await Promise.all([
+    atFetch(AT, 'DailyPlan', `{Date}='${d}'`),
+    atFetch(AT, 'Performance'),
+  ]);
+  state.plan = plan;
+  state.performance = perf;
+  renderTodayPlan();
+  renderContent();
+}
+
+async function renderTodayPlan() {
+  const d = document.getElementById('planDate').value || today();
+  document.getElementById('todayBadge').textContent = d;
+
+  const plan     = state.plan.filter(r => r.Date === d);
+  const accounts = state.igAccounts;
+
+  // KPIs
+  const stories   = plan.filter(r => r.SlotType && r.SlotType.startsWith('Story'));
+  const reelsNew  = plan.filter(r => r.SlotType === 'Reel New');
+  const reelsTrial= plan.filter(r => r.SlotType && r.SlotType.startsWith('Reel Trial'));
+  const posted    = plan.filter(r => r.Status === 'Posted');
+
+  document.getElementById('kTotalStories').textContent   = stories.length;
+  document.getElementById('kTotalReelsNew').textContent  = reelsNew.length;
+  document.getElementById('kTotalReelsTrial').textContent= reelsTrial.length;
+  document.getElementById('kTotalSlots').textContent     = plan.length;
+  document.getElementById('kPostedSlots').textContent    = `${posted.length} / ${plan.length} posted`;
+
+  if (!accounts.length) {
+    document.getElementById('todayPlanContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">👤</div><div>Ni aktivnih računov. Dodaj račune v Airtable → Accounts.</div></div>`;
+    return;
+  }
+
+  if (!plan.length) {
+    document.getElementById('todayPlanContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">📅</div><div>Za ${d} ni plan. Zaženi <code>node daily_plan.js</code> ali izberi drug datum.</div></div>`;
+    return;
+  }
+
+  // Build daily stats lookup: username -> latest stats
+  const statsMap = {};
+  for (const s of state.dailyStats) {
+    const u = (s.Account || '').replace(/^@/, '').toLowerCase();
+    if (!statsMap[u] || (s.Date || '') > (statsMap[u].Date || '')) statsMap[u] = s;
+  }
+
+  let html = '';
+  for (const acc of accounts) {
+    const name = (acc.Username || '').replace(/^@/, '');
+    const accPlan = plan.filter(r => r.Account === name).sort((a,b) => (a.SlotOrder||99)-(b.SlotOrder||99));
+    const total   = accPlan.length;
+    const doneNum = accPlan.filter(r => r.Status === 'Posted').length;
+    const stats   = statsMap[name.toLowerCase()] || {};
+    const follChange = stats['Follower Change'];
+
+    html += `
+    <div class="account-header">
+      <div class="account-avatar">${(name[0]||'?').toUpperCase()}</div>
+      <div>
+        <div class="account-name">${name}</div>
+        <div class="account-sub"><a href="${acc.url||'#'}" target="_blank" style="color:var(--muted);text-decoration:none">↗ Instagram</a> · ${acc.Device||'—'}</div>
+      </div>
+      <div class="account-stats">
+        <div class="account-stat">
+          <div class="account-stat-val">${fmt(acc.Followers||stats.Followers)}</div>
+          <div class="account-stat-label">Followers</div>
+        </div>
+        <div class="account-stat">
+          <div class="account-stat-val" style="color:${follChange>0?'var(--green)':follChange<0?'var(--red)':'var(--muted)'}">${follChange!=null?fmtChange(follChange):'—'}</div>
+          <div class="account-stat-label">Danes +/-</div>
+        </div>
+        <div class="account-stat">
+          <div class="account-stat-val">${doneNum}/${total}</div>
+          <div class="account-stat-label">Posted</div>
+        </div>
+      </div>
+    </div>
+    <div class="slots-grid">`;
+
+    if (!accPlan.length) {
+      html += `<div class="slot-card empty-slot"><div class="slot-label">—</div><div class="slot-content empty">Ni plana</div></div>`;
+    } else {
+      for (const slot of accPlan) {
+        const isStory    = slot.SlotType && slot.SlotType.startsWith('Story');
+        const isReelNew  = slot.SlotType === 'Reel New';
+        const isReelTrial= slot.SlotType && slot.SlotType.startsWith('Reel Trial');
+        const isEmpty    = !slot.ContentID;
+        const cssClass   = isEmpty ? 'empty-slot' : isStory ? 'story-slot' : isReelNew ? 'reel-new' : 'reel-trial';
+        const pillClass  = isStory ? 'pill-blue' : isReelNew ? 'pill-purple' : 'pill-pink';
+        const statusPill = slot.Status === 'Posted' ? 'pill-green' : slot.Status === 'Skipped' ? 'pill-muted' : 'pill-yellow';
+        const desc = (slot.Description || slot.ContentID || '').slice(0, 80);
+
+        html += `
+        <div class="slot-card ${cssClass}">
+          ${slot.ThumbnailURL
+            ? `<div class="slot-thumb"><img src="${slot.ThumbnailURL}" alt="" onerror="this.parentElement.style.display='none'"></div>`
+            : `<div class="slot-thumb-placeholder">${isStory ? '📸' : isReelNew ? '🎬' : '🔁'}</div>`
+          }
+          <div class="slot-label"><span class="pill ${pillClass}">${slot.SlotType || '—'}</span></div>
+          <div class="slot-content ${isEmpty ? 'empty' : ''}">${isEmpty ? 'Ni contentta' : desc || 'ID: ' + slot.ContentID}</div>
+          <div class="slot-status"><span class="pill ${statusPill}">${slot.Status || 'Pending'}</span></div>
+          ${slot.FileURL ? `<div style="margin-top:6px"><a href="${slot.FileURL}" target="_blank" style="font-size:11px;color:var(--blue)">↗ Odpri fajl</a></div>` : ''}
+        </div>`;
+      }
+    }
+    html += `</div><hr class="divider">`;
+  }
+
+  document.getElementById('todayPlanContainer').innerHTML = html;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function getWarmupDays() {
+  const s = state.settings.find(r => r.Setting === 'WarmupDurationDays');
+  return parseInt(s ? s.Value : 14);
+}
+
+// Parse "0,0,1,2" → [0,0,1,2]; index = week-1; last value repeats for week N+
+function getTrialReelsForWeek(week) {
+  const s = state.settings.find(r => r.Setting === 'TrialReelsPerWeek');
+  const arr = (s ? s.Value : '0,0,1,2').split(',').map(v => parseInt(v.trim()) || 0);
+  const idx = Math.max(0, week - 1);
+  return arr[Math.min(idx, arr.length - 1)];
+}
+
+function daysSinceDate(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+// Which posting-week is this account in (1-based), based on Date Created + warmup
+function postingWeek(acc) {
+  const created = acc['Date Created'];
+  if (!created) return 1;
+  const warmup  = getWarmupDays();
+  const daysLive = (daysSinceDate(created) || 0) - warmup;
+  if (daysLive <= 0) return 0; // still in warmup
+  return Math.floor(daysLive / 7) + 1;
+}
+
+// ─── Warmup tab ───────────────────────────────────────────────────────────
+function renderWarmup() {
+  const allAccounts = state.allIgAccounts || [];
+  const warmupDays  = getWarmupDays();
+  const today       = new Date().toISOString().split('T')[0];
+
+  const warmup    = allAccounts.filter(a => a.Status === 'Warmup');
+  const live      = allAccounts.filter(a => a.Status === 'Live');
+  const suspended = allAccounts.filter(a => a.Status === 'Suspended');
+
+  document.getElementById('wCountWarmup').textContent   = warmup.length;
+  document.getElementById('wCountLive').textContent     = live.length;
+  document.getElementById('wCountSuspended').textContent= suspended.length;
+
+  // Avg days left for warmup accounts
+  const daysLeftArr = warmup.map(a => {
+    const created = a['Date Created'];
+    if (!created) return null;
+    const elapsed = daysSinceDate(created) || 0;
+    return Math.max(0, warmupDays - elapsed);
+  }).filter(d => d !== null);
+  const avgLeft = daysLeftArr.length
+    ? Math.round(daysLeftArr.reduce((s,v) => s+v, 0) / daysLeftArr.length)
+    : 0;
+  document.getElementById('wAvgDaysLeft').textContent = avgLeft + 'd';
+
+  if (!allAccounts.length) {
+    document.getElementById('warmupContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni računov v bazi.</div></div>`;
+    return;
+  }
+
+  // Sort: warmup first (by days left asc), then live, then suspended
+  const sorted = [
+    ...warmup.sort((a,b) => {
+      const la = warmupDays - (daysSinceDate(a['Date Created']) || 0);
+      const lb = warmupDays - (daysSinceDate(b['Date Created']) || 0);
+      return la - lb;
+    }),
+    ...live.sort((a,b) => (a.Username||'').localeCompare(b.Username||'')),
+    ...suspended,
+  ];
+
+  const trialScheduleStr = (state.settings.find(r => r.Setting === 'TrialReelsPerWeek') || {}).Value || '0,0,1,2';
+
+  let html = `
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">📅 Trial reeli po tednih postanja</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      ${trialScheduleStr.split(',').map((v,i) => `
+        <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 16px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Teden ${i+1}${i===trialScheduleStr.split(',').length-1?'+':''}</div>
+          <div style="font-size:20px;font-weight:700;color:var(--pink)">${v.trim()}</div>
+          <div style="font-size:10px;color:var(--muted)">trial reeli</div>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--muted)">Nastavi v Settings → TrialReelsPerWeek (vrednosti ločene z vejico)</div>
+  </div>
+
+  <div class="card">
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr>
+          <th>Username</th><th>Status</th><th>Device</th>
+          <th>Ustvarjen</th><th>Dni v warmup</th><th>Live datum</th><th>Dni do Live</th>
+          <th>Teden postanja</th><th>Trial reeli danes</th><th>Followers</th>
+        </tr></thead>
+        <tbody>
+          ${sorted.map(a => {
+            const created  = a['Date Created'] || '';
+            const elapsed  = created ? (daysSinceDate(created) || 0) : null;
+            const daysLeft = created ? Math.max(0, warmupDays - elapsed) : null;
+            const liveDate = created ? addDays(created, warmupDays) : '—';
+            const week     = postingWeek(a);
+            const trials   = week > 0 ? getTrialReelsForWeek(week) : '—';
+            const isWarmup = a.Status === 'Warmup';
+            const isLive   = a.Status === 'Live';
+
+            const pct = created ? Math.min(100, Math.round((elapsed / warmupDays) * 100)) : 0;
+            const barColor = daysLeft === 0 ? 'var(--green)' : daysLeft <= 3 ? 'var(--orange)' : 'var(--blue)';
+
+            return `<tr>
+              <td style="font-weight:600">${(a.Username||'—').replace(/^@/,'')}</td>
+              <td><span class="pill ${isLive?'pill-green':isWarmup?'pill-orange':'pill-red'}">${a.Status||'—'}</span></td>
+              <td style="color:var(--muted);font-size:12px">${a.Device||'—'}</td>
+              <td style="color:var(--muted)">${created||'—'}</td>
+              <td>
+                ${elapsed !== null ? `
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;min-width:60px">
+                      <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px"></div>
+                    </div>
+                    <span style="font-size:12px;white-space:nowrap">${elapsed}/${warmupDays}d</span>
+                  </div>` : '—'}
+              </td>
+              <td style="color:${isLive?'var(--green)':'var(--muted)'};font-weight:${isLive?700:400}">${liveDate}</td>
+              <td style="font-weight:700;color:${daysLeft===0?'var(--green)':daysLeft!==null&&daysLeft<=3?'var(--orange)':'var(--muted)'}">
+                ${daysLeft !== null ? (daysLeft === 0 ? '✅ Danes!' : daysLeft + 'd') : '—'}
+              </td>
+              <td>${week > 0 ? `<span class="pill pill-purple">Teden ${week}</span>` : isWarmup ? '<span class="pill pill-muted">warmup</span>' : '—'}</td>
+              <td style="font-weight:700;color:var(--pink)">${trials}</td>
+              <td>${fmt(a.Followers)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+
+  document.getElementById('warmupContainer').innerHTML = html;
+}
+
+// ─── Content tab ──────────────────────────────────────────────────────────
+function renderContent() {
+  const content = state.content;
+  const available = content.filter(c => c.Status === 'Available' || !c.Status);
+  const stories   = available.filter(c => c.Type === 'Story');
+  const reels     = available.filter(c => c.Type === 'Reel');
+  const trial     = content.filter(c => c.IsTrialReady && c.Type === 'Reel');
+
+  document.getElementById('cStories').textContent    = stories.length;
+  document.getElementById('cReels').textContent      = reels.length;
+  document.getElementById('cTrialReady').textContent = trial.length;
+  document.getElementById('cTotal').textContent      = content.length;
+  document.getElementById('cStoriesSub').textContent = `${stories.length} na voljo`;
+  document.getElementById('cReelsSub').textContent   = `${reels.length} na voljo`;
+
+  // Per-account breakdown
+  const accounts = state.igAccounts;
+  if (!accounts.length) {
+    document.getElementById('contentContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni live računov v Airtable → Instagram Accounts.</div></div>`;
+    return;
+  }
+
+  let html = '';
+  for (const acc of accounts) {
+    const name = (acc.Username || '').replace(/^@/, '');
+    const accContent = content.filter(c => c.Account === name);
+    const aStories = accContent.filter(c => c.Type === 'Story' && (c.Status === 'Available' || !c.Status));
+    const aReels   = accContent.filter(c => c.Type === 'Reel'  && (c.Status === 'Available' || !c.Status));
+    const aTrial   = accContent.filter(c => c.Type === 'Reel' && c.IsTrialReady);
+
+    html += `
+    <div class="account-header">
+      <div class="account-avatar">${(name[0]||'?').toUpperCase()}</div>
+      <div><div class="account-name">${name}</div><div class="account-sub">${acc.Device||'—'}</div></div>
+      <div class="account-stats">
+        <div class="account-stat"><div class="account-stat-val" style="color:var(--blue)">${aStories.length}</div><div class="account-stat-label">Storiji</div></div>
+        <div class="account-stat"><div class="account-stat-val" style="color:var(--purple)">${aReels.length}</div><div class="account-stat-label">Reeli</div></div>
+        <div class="account-stat"><div class="account-stat-val" style="color:var(--pink)">${aTrial.length}</div><div class="account-stat-label">Trial-ready</div></div>
+      </div>
+    </div>`;
+
+    // Days of coverage
+    const storyCover = Math.floor(aStories.length / (acc.StoriesPerDay || 5));
+    const reelCover  = Math.floor(aReels.length   / ((acc.ReelsNewPerDay || 1) + (acc.ReelsTrialPerDay || 2)));
+    html += `
+    <div class="grid grid-2" style="margin-bottom:14px">
+      <div class="card" style="padding:12px 14px">
+        <div class="card-title">📸 Storiji — dni pokritja</div>
+        <div class="card-val" style="font-size:22px;color:${storyCover < 7 ? 'var(--red)' : 'var(--green)'}">${storyCover}d</div>
+        <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:${Math.min(100,storyCover*5)}%;background:${storyCover < 7 ? 'var(--red)' : 'var(--green)'}"></div></div>
+      </div>
+      <div class="card" style="padding:12px 14px">
+        <div class="card-title">🎬 Reeli — dni pokritja</div>
+        <div class="card-val" style="font-size:22px;color:${reelCover < 7 ? 'var(--red)' : 'var(--green)'}">${reelCover}d</div>
+        <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:${Math.min(100,reelCover*5)}%;background:${reelCover < 7 ? 'var(--red)' : 'var(--green)'}"></div></div>
+      </div>
+    </div>`;
+
+    // Content table
+    if (accContent.length > 0) {
+      html += `
+      <div class="card" style="margin-bottom:8px">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th>ContentID</th><th>Type</th><th>Description</th><th>Status</th>
+              <th>PostCount</th><th>AvgViews</th><th>AvgLikes</th><th>Trial</th><th>LastPosted</th>
+            </tr></thead>
+            <tbody>
+              ${accContent.map(c => `
+              <tr>
+                <td style="font-family:monospace;font-size:11px">${c.ContentID||c.id||'—'}</td>
+                <td><span class="pill ${c.Type==='Story'?'pill-blue':'pill-purple'}">${c.Type||'—'}</span></td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.Description||'—'}</td>
+                <td><span class="pill ${c.Status==='Available'||!c.Status?'pill-green':c.Status==='Used'?'pill-yellow':'pill-muted'}">${c.Status||'Available'}</span></td>
+                <td>${c.PostCount||0}</td>
+                <td>${fmt(c.AvgViews)}</td>
+                <td>${fmt(c.AvgLikes)}</td>
+                <td>${c.IsTrialReady ? '✅' : '—'}</td>
+                <td>${c.LastPosted||'—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+    html += `<hr class="divider">`;
+  }
+
+  document.getElementById('contentContainer').innerHTML = html;
+}
+
+// ─── Results tab ──────────────────────────────────────────────────────────
+function renderResults() {
+  const perf = state.performance;
+  const dailyStats = state.dailyStats;
+
+  const reels  = perf.filter(p => p.Type === 'Reel');
+  const stories= perf.filter(p => p.Type === 'Story');
+  const avgViewsReel = reels.length  ? Math.round(reels.reduce((s,p) => s+(p.Views||0),0)/reels.length)   : 0;
+  const avgViewsStory= stories.length? Math.round(stories.reduce((s,p)=>s+(p.Views||0),0)/stories.length): 0;
+  const avgLikes     = perf.length   ? Math.round(perf.reduce((s,p)=>s+(p.Likes||0),0)/perf.length)       : 0;
+
+  document.getElementById('rAvgViewsReel').textContent  = fmt(avgViewsReel);
+  document.getElementById('rAvgViewsStory').textContent = fmt(avgViewsStory);
+  document.getElementById('rAvgLikes').textContent      = fmt(avgLikes);
+  document.getElementById('rTotalPerf').textContent     = perf.length;
+
+  // Posting log KPIs (latest entry)
+  const lastPosting = state.postingLog.sort((a,b)=>(b.Date||'').localeCompare(a.Date||''))[0] || {};
+  document.getElementById('postingKpis').innerHTML = `
+    <div class="card kpi-purple"><div class="card-title">🎬 Reeli postani (zadnji log)</div><div class="card-val">${lastPosting['Number of reels posted']||'—'}</div><div class="card-sub">${lastPosting.Date||'—'}</div></div>
+    <div class="card kpi-blue"><div class="card-title">📸 Storiji postani (zadnji log)</div><div class="card-val">${lastPosting['Number of Stories Posted Today']||'—'}</div><div class="card-sub">${lastPosting.Date||'—'}</div></div>
+    <div class="card kpi-pink"><div class="card-title">📱 Računi aktivni</div><div class="card-val">${lastPosting['Number of Live accounts']||'—'}</div><div class="card-sub">${lastPosting.Date||'—'}</div></div>
+  `;
+
+  // Last 14 days
+  const last14 = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    last14.push(d.toISOString().split('T')[0]);
+  }
+
+  // Followers chart — one line per IG account
+  const accounts = state.igAccounts.slice(0, 6); // max 6 lines for readability
+  const colors = ['#e1306c','#833ab4','#4f9cf9','#06d6a0','#ff9f43','#c77dff'];
+  const follDatasets = accounts.map((acc, i) => {
+    const uname = (acc.Username || '').replace(/^@/, '').toLowerCase();
+    const data = last14.map(d => {
+      const row = dailyStats.find(s => s.Date === d && (s.Account || '').replace(/^@/,'').toLowerCase() === uname);
+      return row ? (row.Followers || null) : null;
+    });
+    return {
+      label: (acc.Username || '').replace(/^@/, ''),
+      data,
+      borderColor: colors[i % colors.length],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 3,
+      tension: 0.3,
+      spanGaps: true,
+    };
+  });
+
+  const ctx2 = document.getElementById('followersChart').getContext('2d');
+  if (followersChart) followersChart.destroy();
+  followersChart = new Chart(ctx2, {
+    type: 'line',
+    data: { labels: last14.map(d => d.slice(5)), datasets: follDatasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#7b82a8', font: { size: 11 } } } },
+      scales: {
+        x: { grid: { color: '#2e3350' }, ticks: { color: '#7b82a8', font: { size: 11 } } },
+        y: { grid: { color: '#2e3350' }, ticks: { color: '#7b82a8', font: { size: 11 } } }
+      }
+    }
+  });
+
+  // Follower change chart (total per day)
+  const dayChange = last14.map(d => {
+    const rows = dailyStats.filter(s => s.Date === d);
+    return rows.reduce((sum, s) => sum + (s['Follower Change'] || 0), 0);
+  });
+
+  const ctx = document.getElementById('perfChart').getContext('2d');
+  if (perfChart) perfChart.destroy();
+  perfChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: last14.map(d => d.slice(5)),
+      datasets: [{
+        label: 'Follower change',
+        data: dayChange,
+        backgroundColor: dayChange.map(v => v >= 0 ? 'rgba(6,214,160,.6)' : 'rgba(255,77,109,.6)'),
+        borderColor:      dayChange.map(v => v >= 0 ? 'rgba(6,214,160,1)'  : 'rgba(255,77,109,1)'),
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#2e3350' }, ticks: { color: '#7b82a8', font: { size: 11 } } },
+        y: { grid: { color: '#2e3350' }, ticks: { color: '#7b82a8', font: { size: 11 } } }
+      }
+    }
+  });
+
+  // Table
+  if (!perf.length) {
+    document.getElementById('resultsTableWrap').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">📊</div><div>Ni še rezultatov. Zaženi <code>node feedback.js --demo</code> za testne podatke.</div></div>`;
+    return;
+  }
+  const sorted = [...perf].sort((a,b) => (b.Date||'').localeCompare(a.Date||''));
+  document.getElementById('resultsTableWrap').innerHTML = `
+    <table class="tbl">
+      <thead><tr>
+        <th>Datum</th><th>Račun</th><th>Slot</th><th>Tip</th>
+        <th>Views</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th><th>Reach</th>
+      </tr></thead>
+      <tbody>
+        ${sorted.map(p => `
+        <tr>
+          <td>${p.Date||'—'}</td>
+          <td>${p.Account||'—'}</td>
+          <td><span class="pill ${p.SlotType&&p.SlotType.startsWith('Story')?'pill-blue':p.SlotType==='Reel New'?'pill-purple':'pill-pink'}">${p.SlotType||'—'}</span></td>
+          <td>${p.Type||'—'}</td>
+          <td style="font-weight:600">${fmt(p.Views)}</td>
+          <td>${fmt(p.Likes)}</td>
+          <td>${fmt(p.Comments)}</td>
+          <td>${fmt(p.Shares)}</td>
+          <td>${fmt(p.Saves)}</td>
+          <td>${fmt(p.Reach)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── Settings tab ─────────────────────────────────────────────────────────
+function renderSettings() {
+  const s = state.settings;
+  if (!s.length) {
+    document.getElementById('settingsCard').innerHTML = `<div class="no-data"><div>Ni settingsov. Zaženi <code>node setup.js</code>.</div></div>`;
+  } else {
+    document.getElementById('settingsCard').innerHTML = `
+      <div class="card-title">⚙️ Sistemske nastavitve</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Setting</th><th>Value</th><th>Description</th></tr></thead>
+          <tbody>
+            ${s.map(r => `
+            <tr>
+              <td style="font-family:monospace;font-weight:600">${r.Setting||'—'}</td>
+              <td style="font-weight:700;color:var(--accent)">${r.Value||'—'}</td>
+              <td style="color:var(--muted)">${r.Description||'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  const accounts = state.igAccounts;
+  document.getElementById('accountsTable').innerHTML = accounts.length ? `
+    <table class="tbl">
+      <thead><tr><th>Username</th><th>Status</th><th>Followers</th><th>Device</th><th>Date Created</th><th>Last Check</th><th>Link</th></tr></thead>
+      <tbody>
+        ${accounts.map(a => `
+        <tr>
+          <td style="font-weight:600">${(a.Username||'—').replace(/^@/,'')}</td>
+          <td><span class="pill ${a.Status==='Live'?'pill-green':a.Status==='Suspended'?'pill-red':'pill-muted'}">${a.Status||'—'}</span></td>
+          <td style="font-weight:600">${fmt(a.Followers)}</td>
+          <td style="color:var(--muted)">${a.Device||'—'}</td>
+          <td style="color:var(--muted)">${a['Date Created']||'—'}</td>
+          <td style="color:var(--muted)">${a['Last Live Check Date']||'—'}</td>
+          <td>${a.url?`<a href="${a.url}" target="_blank" style="color:var(--blue);font-size:12px">↗</a>`:'—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<div class="no-data"><div>Ni live računov v Airtable (base: appkOOpwWXWRxYjbH → Instagram Accounts).</div></div>`;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+document.getElementById('planDate').value = today();
+if (!getApiKey()) {
+  document.getElementById('setupModal').style.display = 'flex';
+} else {
+  loadAll();
+}
+</script>
+</body>
+</html>

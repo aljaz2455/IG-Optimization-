@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: ig-optimization-dashboard
+    runtime: static
+    buildCommand: mkdir -p public && cp dashboard.html public/index.html
+    staticPublishPath: public
+    pullRequestPreviewsEnabled: false
