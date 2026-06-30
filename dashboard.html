@@ -160,6 +160,7 @@
 
 <div class="tabs">
   <div class="tab active" onclick="showTab('today')">📅 Danes</div>
+  <div class="tab" onclick="showTab('ready')">📬 Ready to Post</div>
   <div class="tab" onclick="showTab('warmup')">🔥 Warmup</div>
   <div class="tab" onclick="showTab('content')">🎬 Content</div>
   <div class="tab" onclick="showTab('results')">📊 Rezultati</div>
@@ -190,6 +191,37 @@
   </div>
 
   <div id="todayPlanContainer"><div class="loading"><div class="spinner"></div>Nalagam...</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB: READY TO POST
+     ════════════════════════════════════════════ -->
+<div class="page" id="page-ready">
+  <div class="section-header">
+    <div>
+      <div class="section-title">📬 Ready to Post</div>
+      <div class="section-sub">Content ki je pripravljen — VA ga postavi danes</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="readyFilter" onchange="renderReady()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:12px">
+        <option value="all">Vsi tipi</option>
+        <option value="Story">Samo storiji</option>
+        <option value="Reel">Samo reeli</option>
+      </select>
+      <select id="readyAccount" onchange="renderReady()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:12px">
+        <option value="all">Vsi računi</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid grid-4" style="margin-bottom:20px">
+    <div class="card kpi-blue"><div class="card-title">📸 Ready storiji</div><div class="card-val" id="rp_stories">—</div></div>
+    <div class="card kpi-purple"><div class="card-title">🎬 Ready reeli</div><div class="card-val" id="rp_reels">—</div></div>
+    <div class="card kpi-pink"><div class="card-title">🔁 Trial-ready</div><div class="card-val" id="rp_trial">—</div></div>
+    <div class="card kpi-orange"><div class="card-title">📦 Skupaj ready</div><div class="card-val" id="rp_total">—</div></div>
+  </div>
+
+  <div id="readyContainer"><div class="loading"><div class="spinner"></div>Nalagam...</div></div>
 </div>
 
 <!-- ════════════════════════════════════════════
@@ -371,14 +403,100 @@ async function atFetch(baseUrl, table, filter) {
 // ─── Tab switching ────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['today','warmup','content','results','settings'];
+    const names = ['today','ready','warmup','content','results','settings'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
+  if (name === 'ready')    renderReady();
   if (name === 'warmup')   renderWarmup();
   if (name === 'results')  renderResults();
   if (name === 'settings') renderSettings();
+}
+
+// ─── Ready to Post tab ────────────────────────────────────────────────────
+function renderReady() {
+  const typeFilter    = document.getElementById('readyFilter').value;
+  const accountFilter = document.getElementById('readyAccount').value;
+
+  // Populate account dropdown
+  const accounts = [...new Set(state.content.map(c => c.Account).filter(Boolean))].sort();
+  const sel = document.getElementById('readyAccount');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="all">Vsi računi</option>' +
+    accounts.map(a => `<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
+
+  const ready = state.content.filter(c => c.Status === 'Available' || !c.Status);
+  const filtered = ready.filter(c =>
+    (typeFilter === 'all' || c.Type === typeFilter) &&
+    (accountFilter === 'all' || c.Account === accountFilter)
+  );
+
+  document.getElementById('rp_stories').textContent = ready.filter(c => c.Type === 'Story').length;
+  document.getElementById('rp_reels').textContent   = ready.filter(c => c.Type === 'Reel').length;
+  document.getElementById('rp_trial').textContent   = ready.filter(c => c.IsTrialReady).length;
+  document.getElementById('rp_total').textContent   = ready.length;
+
+  if (!filtered.length) {
+    document.getElementById('readyContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni razpoložljivega contentta. Dodaj v Airtable → ContentLibrary.</div></div>`;
+    return;
+  }
+
+  // Group by account
+  const grouped = {};
+  for (const c of filtered) {
+    const acc = c.Account || '—';
+    if (!grouped[acc]) grouped[acc] = [];
+    grouped[acc].push(c);
+  }
+
+  let html = '';
+  for (const [acc, items] of Object.entries(grouped)) {
+    const stories = items.filter(c => c.Type === 'Story').length;
+    const reels   = items.filter(c => c.Type === 'Reel').length;
+
+    html += `
+    <div class="account-header">
+      <div class="account-avatar">${(acc[0]||'?').toUpperCase()}</div>
+      <div>
+        <div class="account-name">${acc}</div>
+        <div class="account-sub">${stories} storij · ${reels} reelev ready</div>
+      </div>
+    </div>
+    <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:8px">`;
+
+    for (const c of items) {
+      const isStory = c.Type === 'Story';
+      const borderColor = isStory ? 'var(--blue)' : 'var(--purple)';
+      const icon        = isStory ? '📸' : '🎬';
+      const pillClass   = isStory ? 'pill-blue' : 'pill-purple';
+      const trialBadge  = c.IsTrialReady ? '<span class="pill pill-pink" style="margin-left:4px">🔁 trial</span>' : '';
+
+      html += `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-top:3px solid ${borderColor};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+        ${c.ThumbnailURL
+          ? `<img src="${c.ThumbnailURL}" alt="" style="width:100%;aspect-ratio:9/16;object-fit:cover" onerror="this.style.display='none'">`
+          : `<div style="width:100%;aspect-ratio:9/16;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:32px">${icon}</div>`
+        }
+        <div style="padding:10px 12px;flex:1;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+            <span class="pill ${pillClass}">${c.Type||'—'}</span>${trialBadge}
+          </div>
+          ${c.Description ? `<div style="font-size:12px;color:var(--text);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${c.Description}</div>` : ''}
+          ${c.Tags ? `<div style="font-size:11px;color:var(--muted)">${c.Tags}</div>` : ''}
+          <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap">
+            ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:3px 8px;border-radius:6px">↗ Odpri</a>` : ''}
+          </div>
+          ${c.PostCount ? `<div style="font-size:10px;color:var(--muted)">Postano ${c.PostCount}× · avg ${fmt(c.AvgViews)} views</div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    html += `</div><hr class="divider">`;
+  }
+
+  document.getElementById('readyContainer').innerHTML = html;
 }
 
 // ─── Load all ─────────────────────────────────────────────────────────────
