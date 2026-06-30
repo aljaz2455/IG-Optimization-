@@ -1,7 +1,19 @@
 services:
   - type: web
     name: ig-optimization-dashboard
-    runtime: static
-    buildCommand: mkdir -p public && cp dashboard.html public/index.html
-    staticPublishPath: public
-    pullRequestPreviewsEnabled: false
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: AIRTABLE_BASE_ID
+        value: appYCG4Sfa4AI0s6W
+      - key: ACCOUNTS_BASE_ID
+        value: appkOOpwWXWRxYjbH
+      - key: DASHBOARD_USER
+        value: aljaz
+      - key: DASHBOARD_PASS
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true

@@ -2,13 +2,17 @@
   "name": "ig-optimization",
   "version": "1.0.0",
   "description": "Instagram daily posting plan optimizer",
-  "main": "daily_plan.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "setup": "node setup.js",
     "plan": "node daily_plan.js",
     "feedback": "node feedback.js"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
     "node-fetch": "^2.7.0"
   }
 }
