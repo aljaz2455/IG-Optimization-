@@ -303,24 +303,33 @@
   </div>
 </div>
 
-<div id="setupModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#1a1d27;border:1px solid #2e3350;border-radius:16px;padding:32px;width:420px;max-width:90vw">
-    <div style="font-size:24px;margin-bottom:8px">🔑 API Key</div>
-    <div style="color:#7b82a8;font-size:13px;margin-bottom:20px">Vnesi Airtable Personal Access Token. Shrani se v browser (localStorage).</div>
-    <input id="apiKeyInput" type="password" placeholder="patXXX..." style="width:100%;background:#0f1117;border:1px solid #2e3350;border-radius:8px;color:#e8eaf6;padding:10px 14px;font-size:13px;margin-bottom:12px;font-family:monospace">
-    <button onclick="saveApiKey()" style="width:100%;background:#e1306c;border:none;color:#fff;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Shrani & naloži</button>
+<div id="loginModal" style="display:none;position:fixed;inset:0;background:#0f1117;z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#1a1d27;border:1px solid #2e3350;border-radius:16px;padding:40px 36px;width:380px;max-width:90vw">
+    <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(45deg,#fd1d1d,#e1306c,#833ab4);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:20px">📸</div>
+    <div style="font-size:20px;font-weight:700;margin-bottom:4px">IG <span style="background:linear-gradient(90deg,#e1306c,#c77dff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Optimizer</span></div>
+    <div style="color:#7b82a8;font-size:13px;margin-bottom:28px">Prijavi se za dostop</div>
+    <div id="loginError" style="display:none;background:rgba(255,77,109,.15);border:1px solid rgba(255,77,109,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#ff4d6d;margin-bottom:14px">Napačno geslo.</div>
+    <div style="font-size:11px;font-weight:600;color:#7b82a8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Geslo</div>
+    <input id="loginPass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;background:#0f1117;border:1px solid #2e3350;border-radius:8px;color:#e8eaf6;padding:10px 14px;font-size:14px;margin-bottom:16px">
+    <button onclick="doLogin()" style="width:100%;background:linear-gradient(90deg,#e1306c,#833ab4);border:none;color:#fff;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Prijava →</button>
   </div>
 </div>
+<div id="setupModal" style="display:none"></div>
 
 <script>
 // ─── Config ───────────────────────────────────────────────────────────────
 const BASE_ID      = 'appYCG4Sfa4AI0s6W';
 const ACCOUNTS_BASE= 'appkOOpwWXWRxYjbH';
 
-function getApiKey() {
-  // Injected by server (Render) → fallback to localStorage for local use
-  return window.__IG_API_KEY__ || localStorage.getItem('ig_api_key') || '';
-}
+// API key injected by Render build (sed replaces placeholder), fallback to localStorage for local dev
+const __INJECTED_KEY__ = '__AIRTABLE_KEY__';
+const __INJECTED_PASS__ = '__DASH_PASS__';
+const INJECTED_KEY  = __INJECTED_KEY__.startsWith('__') ? '' : __INJECTED_KEY__;
+const INJECTED_PASS = __INJECTED_PASS__.startsWith('__') ? '' : __INJECTED_PASS__;
+
+function getApiKey() { return INJECTED_KEY || localStorage.getItem('ig_api_key') || ''; }
+function getPass()   { return INJECTED_PASS || 'localdev'; }
+
 function saveApiKey() {
   const k = document.getElementById('apiKeyInput').value.trim();
   if (!k) return;
@@ -926,10 +935,24 @@ function renderSettings() {
     </table>` : `<div class="no-data"><div>Ni live računov v Airtable (base: appkOOpwWXWRxYjbH → Instagram Accounts).</div></div>`;
 }
 
+// ─── Login ────────────────────────────────────────────────────────────────
+function doLogin() {
+  const entered = document.getElementById('loginPass').value;
+  const correct = getPass();
+  if (!correct || correct === 'localdev' || entered === correct) {
+    sessionStorage.setItem('ig_auth', '1');
+    document.getElementById('loginModal').style.display = 'none';
+    loadAll();
+  } else {
+    document.getElementById('loginError').style.display = 'block';
+    document.getElementById('loginPass').value = '';
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────
 document.getElementById('planDate').value = today();
-if (!getApiKey()) {
-  document.getElementById('setupModal').style.display = 'flex';
+if (!sessionStorage.getItem('ig_auth')) {
+  document.getElementById('loginModal').style.display = 'flex';
 } else {
   loadAll();
 }
