@@ -523,7 +523,7 @@ function contentMatchesAccount(content, allowedAngles) {
 
 // ─── Pravila tab ──────────────────────────────────────────────────────────
 function renderRules() {
-  const accounts = state.igAccounts; // only Live
+  const accounts = state.allIgAccounts.filter(a => a.Status === 'Live' || a.Status === 'Warmup');
   if (!accounts.length) {
     document.getElementById('rulesContainer').innerHTML =
       `<div class="no-data"><div class="no-data-icon">👤</div><div>Ni aktivnih računov.</div></div>`;
@@ -788,6 +788,8 @@ async function loadAll() {
       loadContentBase(),
       atFetch(AT,     'Settings'),
     ]);
+    // Trim trailing spaces from Status field (Airtable sometimes returns "Suspended ")
+    for (const a of igAccounts) { if (a.Status) a.Status = a.Status.trim(); }
     state.allIgAccounts = igAccounts;
     state.igAccounts    = igAccounts.filter(a => a.Status === 'Live');
     state.dailyStats  = dailyStats;

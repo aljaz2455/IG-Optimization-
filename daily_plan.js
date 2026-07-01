@@ -15,8 +15,19 @@
 const { readAll, batchInsert, deleteRecords, sleep, API_KEY } = require('./airtable');
 const fetch = require('node-fetch');
 
-const ACCOUNTS_BASE = process.env.ACCOUNTS_BASE_ID || 'appkOOpwWXWRxYjbH';
-const AT_ACC = `https://api.airtable.com/v0/${ACCOUNTS_BASE}`;
+const ACCOUNTS_BASE  = process.env.ACCOUNTS_BASE_ID || 'appkOOpwWXWRxYjbH';
+const AT_ACC         = `https://api.airtable.com/v0/${ACCOUNTS_BASE}`;
+const TG_TOKEN       = process.env.TELEGRAM_BOT_TOKEN || '';
+const TG_CHAT        = process.env.TELEGRAM_CHAT_ID   || '';
+
+async function sendTelegram(text) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' }),
+  });
+}
 
 async function readAccBase(table) {
   const rows = [];
@@ -161,7 +172,42 @@ async function main() {
   loadSettings(settings);
   console.log(`Settings: ${STORIES_PER_DAY} stories | ${REELS_NEW_PER_DAY} new reel | ${REELS_TRIAL_PER_DAY} trial reels`);
 
-  const activeAccounts = igAccounts.filter(a => a.Status === 'Live');
+  // ── Suspended account notifications ─────────────────────────────────────
+  const suspendedToday = igAccounts.filter(a => {
+    if (!a.Status) return false;
+    const status = a.Status.trim();
+    if (status !== 'Suspended') return false;
+    // Notify only if Suspension Date = today (freshly suspended)
+    const suspDate = a['Suspension Date'] || '';
+    return suspDate === TODAY;
+  });
+
+  for (const acc of suspendedToday) {
+    const name        = (acc.Username || '').trim() || acc.id;
+    const created     = acc['Date Created'] || '';
+    const suspDate    = acc['Suspension Date'] || TODAY;
+    const totalDays   = created ? Math.floor((new Date(suspDate) - new Date(created)) / 86400000) : null;
+    const liveDays    = totalDays != null ? Math.max(0, totalDays - WARMUP_DURATION_DAYS) : null;
+    const warmupDays  = totalDays != null ? Math.min(totalDays, WARMUP_DURATION_DAYS) : null;
+
+    const lines = [
+      `🚫 <b>Račun suspendiran</b>`,
+      ``,
+      `👤 <b>${name}</b>`,
+      created   ? `📅 Ustvarjen: ${created}` : '',
+      `🔴 Suspendiran: ${suspDate}`,
+      totalDays != null ? `⏱ Skupaj dni: ${totalDays}` : '',
+      warmupDays != null ? `🔥 Warmup: ${warmupDays} dni` : '',
+      liveDays != null ? `✅ Dni LIVE: ${liveDays}` : '',
+      acc.Followers != null ? `👥 Sledilci ob suspenziji: ${acc.Followers}` : '',
+      acc.Device ? `📱 Naprava: ${acc.Device}` : '',
+    ].filter(Boolean).join('\n');
+
+    console.log(`\n🚫 Suspended: ${name} (${liveDays ?? '?'} dni LIVE)`);
+    await sendTelegram(lines);
+  }
+
+  const activeAccounts = igAccounts.filter(a => a.Status && a.Status.trim() === 'Live');
   if (!activeAccounts.length) {
     console.log('⚠  No active accounts found in Instagram Accounts table.');
     return;
