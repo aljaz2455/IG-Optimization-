@@ -162,6 +162,7 @@
   <div class="tab active" onclick="showTab('today')">📅 Danes</div>
   <div class="tab" onclick="showTab('ready')">📬 Ready to Post</div>
   <div class="tab" onclick="showTab('warmup')">🔥 Warmup</div>
+  <div class="tab" onclick="showTab('rules')">📋 Pravila</div>
   <div class="tab" onclick="showTab('content')">🎬 Content</div>
   <div class="tab" onclick="showTab('results')">📊 Rezultati</div>
   <div class="tab" onclick="showTab('settings')">⚙️ Settings</div>
@@ -312,6 +313,22 @@
 </div>
 
 <!-- ════════════════════════════════════════════
+     TAB: PRAVILA
+     ════════════════════════════════════════════ -->
+<div class="page" id="page-rules">
+  <div class="section-header">
+    <div>
+      <div class="section-title">📋 Pravila za račune</div>
+      <div class="section-sub">Izberi kateri Marketing Angles so dovoljeni za vsak IG račun</div>
+    </div>
+    <button onclick="saveRules()" id="saveRulesBtn" style="background:linear-gradient(90deg,#e1306c,#833ab4);border:none;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">💾 Shrani pravila</button>
+  </div>
+  <div id="rulesContainer">
+    <div class="loading"><div class="spinner"></div>Nalagam...</div>
+  </div>
+</div>
+
+<!--
      TAB: SETTINGS
      ════════════════════════════════════════════ -->
 <div class="page" id="page-settings">
@@ -475,110 +492,286 @@ async function loadContentBase() {
 // ─── Tab switching ────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['today','ready','warmup','content','results','settings'];
+    const names = ['today','ready','warmup','rules','content','results','settings'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   if (name === 'ready')    renderReady();
   if (name === 'warmup')   renderWarmup();
+  if (name === 'rules')    renderRules();
   if (name === 'results')  renderResults();
   if (name === 'settings') renderSettings();
+}
+
+// ─── Rules helpers ────────────────────────────────────────────────────────
+function getRules() {
+  // Returns { accountName: Set<angle>, ... } from state.settings
+  const rules = {};
+  for (const s of state.settings) {
+    if (!s.Setting || !s.Setting.startsWith('IGRule_')) continue;
+    const acc = s.Setting.slice(7); // strip "IGRule_"
+    rules[acc] = new Set((s.Value || '').split(',').map(v => v.trim()).filter(Boolean));
+  }
+  return rules;
+}
+
+function contentMatchesAccount(content, allowedAngles) {
+  if (!allowedAngles || allowedAngles.size === 0) return false;
+  return content.MarketingAngles.some(a => allowedAngles.has(a));
+}
+
+// ─── Pravila tab ──────────────────────────────────────────────────────────
+function renderRules() {
+  const accounts = state.igAccounts; // only Live
+  if (!accounts.length) {
+    document.getElementById('rulesContainer').innerHTML =
+      `<div class="no-data"><div class="no-data-icon">👤</div><div>Ni aktivnih računov.</div></div>`;
+    return;
+  }
+
+  // Collect all known Marketing Angles from content
+  const allAngles = [...new Set(state.content.flatMap(c => c.MarketingAngles).filter(Boolean))].sort();
+  const rules = getRules();
+
+  let html = '';
+  for (const acc of accounts) {
+    const name = acc['Username'] || acc['Account Name'] || acc['Name'] || acc.id;
+    const allowed = rules[name] || new Set();
+
+    html += `
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div class="account-avatar">${(name[0]||'?').toUpperCase()}</div>
+        <div>
+          <div class="account-name">${name}</div>
+          <div class="account-sub">${allowed.size ? allowed.size + ' kotov dovoljenih' : 'Brez pravil — content se ne prikazuje'}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px" id="angles_${CSS.escape(name)}">`;
+
+    if (!allAngles.length) {
+      html += `<div style="font-size:12px;color:var(--muted)">Ni Marketing Angles v contentu.</div>`;
+    }
+    for (const angle of allAngles) {
+      const checked = allowed.has(angle);
+      html += `
+        <label style="display:flex;align-items:center;gap:6px;background:${checked?'rgba(225,48,108,.15)':'var(--surface2)'};border:1px solid ${checked?'rgba(225,48,108,.5)':'var(--border)'};border-radius:20px;padding:5px 12px;cursor:pointer;font-size:12px;transition:all .15s"
+               onmouseenter="this.style.borderColor='rgba(225,48,108,.5)'" onmouseleave="syncAngleStyle(this)">
+          <input type="checkbox" data-account="${name}" data-angle="${angle}" ${checked?'checked':''} onchange="syncAngleStyle(this.parentElement);updateRulesBadge('${CSS.escape(name)}')"
+                 style="display:none">
+          <span>${angle}</span>
+        </label>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  document.getElementById('rulesContainer').innerHTML = html;
+}
+
+function syncAngleStyle(label) {
+  const cb = label.querySelector('input[type=checkbox]');
+  if (!cb) return;
+  label.style.background = cb.checked ? 'rgba(225,48,108,.15)' : 'var(--surface2)';
+  label.style.borderColor = cb.checked ? 'rgba(225,48,108,.5)' : 'var(--border)';
+}
+
+function updateRulesBadge(escapedName) {
+  const container = document.getElementById('angles_' + escapedName);
+  if (!container) return;
+  const count = container.querySelectorAll('input:checked').length;
+  const sub = container.closest('.card').querySelector('.account-sub');
+  if (sub) sub.textContent = count ? count + ' kotov dovoljenih' : 'Brez pravil — content se ne prikazuje';
+}
+
+async function saveRules() {
+  const btn = document.getElementById('saveRulesBtn');
+  btn.textContent = '⏳ Shranjujem...'; btn.disabled = true;
+
+  // Collect checkboxes → { accountName: [angles] }
+  const collected = {};
+  document.querySelectorAll('#rulesContainer input[type=checkbox]').forEach(cb => {
+    const acc = cb.dataset.account;
+    if (!collected[acc]) collected[acc] = [];
+    if (cb.checked) collected[acc].push(cb.dataset.angle);
+  });
+
+  try {
+    for (const [acc, angles] of Object.entries(collected)) {
+      const key = `IGRule_${acc}`;
+      const val = angles.join(',');
+      // Find existing settings record
+      const existing = state.settings.find(s => s.Setting === key);
+      if (existing) {
+        await fetch(`${AT}/${encodeURIComponent('Settings')}/${existing.id}`, {
+          method: 'PATCH',
+          headers: { ...HDR(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: { Value: val } }),
+        });
+        existing.Value = val;
+      } else {
+        const r = await fetch(`${AT}/${encodeURIComponent('Settings')}`, {
+          method: 'POST',
+          headers: { ...HDR(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: { Setting: key, Value: val } }),
+        });
+        const d = await r.json();
+        state.settings.push({ id: d.id, Setting: key, Value: val });
+      }
+    }
+    btn.textContent = '✓ Shranjeno!';
+    setTimeout(() => { btn.textContent = '💾 Shrani pravila'; btn.disabled = false; }, 2000);
+  } catch(e) {
+    btn.textContent = '❌ Napaka'; btn.disabled = false;
+    console.error(e);
+  }
+}
+
+// ─── Content card HTML helper ─────────────────────────────────────────────
+function contentCardHtml(c) {
+  const isReel      = c.Types.includes('REEL') || c.Types.includes('Reel');
+  const borderColor = isReel ? 'var(--purple)' : 'var(--blue)';
+  const icon        = isReel ? '🎬' : '📸';
+  const pillClass   = isReel ? 'pill-purple' : 'pill-blue';
+  const canPlay     = !!(c.VideoURL || c.FileURL);
+  const dataAttrs   = `data-video="${c.VideoURL||''}" data-air="${c.FileURL||''}" data-title="${(c.SetName||'').replace(/"/g,'&quot;')}"`;
+  return `
+  <div style="background:var(--surface2);border:1px solid var(--border);border-top:3px solid ${borderColor};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+    <div style="position:relative;width:100%;aspect-ratio:9/16;background:#111;overflow:hidden;max-height:220px;cursor:${canPlay?'pointer':'default'}"
+         ${canPlay ? `onclick="openMediaModal(this)" ${dataAttrs}` : ''}>
+      ${c.ThumbURL
+        ? `<img src="${c.ThumbURL}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px">${icon}</div>`
+      }
+      ${canPlay ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3)">
+        <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-size:20px">▶</div>
+      </div>` : ''}
+    </div>
+    <div style="padding:12px;flex:1;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        ${c.Types.map(t => `<span class="pill ${pillClass}">${t}</span>`).join('')}
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">${c.Model}</span>
+      </div>
+      ${c.SetName ? `<div style="font-size:13px;font-weight:600;color:var(--text)">${c.SetName}</div>` : ''}
+      ${c.MarketingAngles.length ? `<div style="font-size:11px;color:var(--muted)">${c.MarketingAngles.join(', ')}</div>` : ''}
+      ${c.DateToPost ? `<div style="font-size:11px;color:var(--green)">📅 Post: ${c.DateToPost}</div>` : ''}
+      ${c.Background ? `<div style="font-size:11px;color:var(--muted)">🎨 ${c.Background}</div>` : ''}
+      ${c.Outfit ? `<div style="font-size:11px;color:var(--muted)">👗 ${c.Outfit}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap;padding-top:4px">
+        ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:4px 10px;border-radius:6px">↗ Odpri v Air</a>` : ''}
+      </div>
+    </div>
+  </div>`;
 }
 
 // ─── Ready to Post tab ────────────────────────────────────────────────────
 function renderReady() {
   const typeFilter  = document.getElementById('readyFilter').value;
-  const modelFilter = document.getElementById('readyAccount').value;
+  const accFilter   = document.getElementById('readyAccount').value;
 
-  const ready = state.content.filter(c => c.Status === 'Ready For Posting');
-
-  // Populate model dropdown
-  const models = [...new Set(ready.map(c => c.Model).filter(Boolean))].sort();
-  const sel = document.getElementById('readyAccount');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="all">Vsi modeli</option>' +
-    models.map(m => `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
-
-  const filtered = ready.filter(c =>
-    (typeFilter === 'all' || c.Types.includes(typeFilter)) &&
-    (modelFilter === 'all' || c.Model === modelFilter)
-  );
+  const ready  = state.content.filter(c => c.Status === 'Ready For Posting');
+  const rules  = getRules();
+  const hasRules = Object.keys(rules).length > 0;
 
   document.getElementById('rp_stories').textContent = ready.filter(c => c.Types.includes('STORY') || c.Types.includes('Story')).length;
   document.getElementById('rp_reels').textContent   = ready.filter(c => c.Types.includes('REEL')  || c.Types.includes('Reel')).length;
   document.getElementById('rp_trial').textContent   = '—';
   document.getElementById('rp_total').textContent   = ready.length;
 
-  if (!filtered.length) {
+  if (!ready.length) {
     document.getElementById('readyContainer').innerHTML =
       `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni contentta z "Ready For Posting" statusom v Airtable.</div></div>`;
     return;
   }
 
-  // Group by model
-  const grouped = {};
-  for (const c of filtered) {
-    const grp = c.Model || '—';
-    if (!grouped[grp]) grouped[grp] = [];
-    grouped[grp].push(c);
-  }
+  // Build account dropdown
+  const accNames = hasRules ? Object.keys(rules).sort() : [...new Set(ready.map(c => c.Model).filter(Boolean))].sort();
+  const sel = document.getElementById('readyAccount');
+  const cur = sel.value;
+  sel.innerHTML = `<option value="all">${hasRules ? 'Vsi računi' : 'Vsi modeli'}</option>` +
+    accNames.map(a => `<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
 
-  let html = '';
-  for (const [model, items] of Object.entries(grouped)) {
-    const reels   = items.filter(c => c.Types.includes('REEL') || c.Types.includes('Reel')).length;
-    const stories = items.filter(c => c.Types.includes('STORY') || c.Types.includes('Story')).length;
+  if (hasRules) {
+    // Group content by account based on Marketing Angle rules
+    const grouped = {}; // account → [contentItems]
+    const unmatched = [];
 
-    html += `
-    <div class="account-header">
-      <div class="account-avatar">${(model[0]||'?').toUpperCase()}</div>
-      <div>
-        <div class="account-name">${model}</div>
-        <div class="account-sub">${reels} reelev · ${stories} storij · ${items.length} skupaj</div>
-      </div>
-    </div>
-    <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:8px">`;
-
-    for (const c of items) {
-      const isReel = c.Types.includes('REEL') || c.Types.includes('Reel');
-      const borderColor = isReel ? 'var(--purple)' : 'var(--blue)';
-      const icon        = isReel ? '🎬' : '📸';
-      const pillClass   = isReel ? 'pill-purple' : 'pill-blue';
-      const canPlay     = !!(c.VideoURL || c.FileURL);
-      const dataAttrs   = `data-video="${c.VideoURL||''}" data-air="${c.FileURL||''}" data-title="${(c.SetName||'').replace(/"/g,'&quot;')}"`;
-
-      html += `
-      <div style="background:var(--surface2);border:1px solid var(--border);border-top:3px solid ${borderColor};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-        <div style="position:relative;width:100%;aspect-ratio:9/16;background:#111;overflow:hidden;max-height:220px;cursor:${canPlay?'pointer':'default'}"
-             ${canPlay ? `onclick="openMediaModal(this)" ${dataAttrs}` : ''}>
-          ${c.ThumbURL
-            ? `<img src="${c.ThumbURL}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`
-            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px">${icon}</div>`
-          }
-          ${canPlay ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3)">
-            <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-size:20px">▶</div>
-          </div>` : ''}
-        </div>
-        <div style="padding:12px;flex:1;display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-            ${c.Types.map(t => `<span class="pill ${pillClass}">${t}</span>`).join('')}
-          </div>
-          ${c.SetName ? `<div style="font-size:13px;font-weight:600;color:var(--text)">${c.SetName}</div>` : ''}
-          ${c.MarketingAngles.length ? `<div style="font-size:11px;color:var(--muted)">${c.MarketingAngles.join(', ')}</div>` : ''}
-          ${c.DateToPost ? `<div style="font-size:11px;color:var(--green)">📅 Post: ${c.DateToPost}</div>` : ''}
-          ${c.Background ? `<div style="font-size:11px;color:var(--muted)">🎨 ${c.Background}</div>` : ''}
-          ${c.Outfit ? `<div style="font-size:11px;color:var(--muted)">👗 ${c.Outfit}</div>` : ''}
-          <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap;padding-top:4px">
-            ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:4px 10px;border-radius:6px">↗ Odpri v Air</a>` : ''}
-          </div>
-        </div>
-      </div>`;
+    for (const c of ready) {
+      if (typeFilter !== 'all' && !c.Types.includes(typeFilter)) continue;
+      let matched = false;
+      for (const [acc, allowed] of Object.entries(rules)) {
+        if (accFilter !== 'all' && acc !== accFilter) continue;
+        if (contentMatchesAccount(c, allowed)) {
+          if (!grouped[acc]) grouped[acc] = [];
+          grouped[acc].push(c);
+          matched = true;
+        }
+      }
+      if (!matched && accFilter === 'all') unmatched.push(c);
     }
 
-    html += `</div><hr class="divider">`;
-  }
+    let html = '';
+    for (const [acc, items] of Object.entries(grouped)) {
+      const reels   = items.filter(c => c.Types.includes('REEL') || c.Types.includes('Reel')).length;
+      const stories = items.filter(c => c.Types.includes('STORY') || c.Types.includes('Story')).length;
+      html += `
+      <div class="account-header">
+        <div class="account-avatar">${(acc[0]||'?').toUpperCase()}</div>
+        <div>
+          <div class="account-name">${acc}</div>
+          <div class="account-sub">${reels} reelev · ${stories} storij · ${items.length} skupaj</div>
+        </div>
+      </div>
+      <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:8px">
+        ${items.map(contentCardHtml).join('')}
+      </div><hr class="divider">`;
+    }
 
-  document.getElementById('readyContainer').innerHTML = html;
+    if (unmatched.length) {
+      html += `
+      <div class="account-header">
+        <div class="account-avatar" style="background:var(--border);color:var(--muted)">?</div>
+        <div>
+          <div class="account-name" style="color:var(--muted)">Brez ujemanja</div>
+          <div class="account-sub">Content brez primernega računa — nastavi pravila</div>
+        </div>
+      </div>
+      <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:8px">
+        ${unmatched.map(contentCardHtml).join('')}
+      </div><hr class="divider">`;
+    }
+
+    if (!html) html = `<div class="no-data"><div class="no-data-icon">📋</div><div>Noben content ne ustreza pravilom. Uredi pravila v zavihku 📋 Pravila.</div></div>`;
+    document.getElementById('readyContainer').innerHTML = html;
+
+  } else {
+    // No rules set — group by model as fallback
+    const grouped = {};
+    for (const c of ready) {
+      if (typeFilter !== 'all' && !c.Types.includes(typeFilter)) continue;
+      if (accFilter !== 'all' && c.Model !== accFilter) continue;
+      const grp = c.Model || '—';
+      if (!grouped[grp]) grouped[grp] = [];
+      grouped[grp].push(c);
+    }
+
+    let html = `<div style="background:rgba(225,48,108,.08);border:1px solid rgba(225,48,108,.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--muted)">
+      📋 Ni nastavljenih pravil — content je grupiran po modelu. Nastavi pravila v zavihku <strong style="color:var(--text)">📋 Pravila</strong> da se sortira po računih.
+    </div>`;
+    for (const [model, items] of Object.entries(grouped)) {
+      html += `
+      <div class="account-header">
+        <div class="account-avatar">${(model[0]||'?').toUpperCase()}</div>
+        <div><div class="account-name">${model}</div><div class="account-sub">${items.length} kosov ready</div></div>
+      </div>
+      <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));margin-bottom:8px">
+        ${items.map(contentCardHtml).join('')}
+      </div><hr class="divider">`;
+    }
+    if (!Object.keys(grouped).length) html += `<div class="no-data"><div class="no-data-icon">📭</div><div>Ni contentta z "Ready For Posting" statusom.</div></div>`;
+    document.getElementById('readyContainer').innerHTML = html;
+  }
 }
 
 // ─── Load all ─────────────────────────────────────────────────────────────
