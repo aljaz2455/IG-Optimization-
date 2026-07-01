@@ -275,4 +275,24 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(async e => {
+  console.error(e);
+  // Detect Airtable auth/scraping errors and alert via Telegram before failing
+  const msg = e.message || '';
+  const isAuthErr     = msg.includes('401') || msg.includes('UNAUTHORIZED') || msg.includes('invalid_api_key');
+  const isRateErr     = msg.includes('429') || msg.includes('RATE_LIMIT');
+  const isPermErr     = msg.includes('403') || msg.includes('FORBIDDEN') || msg.includes('permission');
+  if (isAuthErr || isRateErr || isPermErr) {
+    const kind = isAuthErr ? '🔑 API ključ invalid / račun suspendiran'
+               : isRateErr ? '⚠️ Rate limit — preveč zahtevkov'
+               : '🚫 Dostop zavrnjen (403)';
+    await sendTelegram(
+      `❌ <b>IG Scraper — kritična napaka</b>\n\n${kind}\n\n<code>${msg.slice(0, 300)}</code>\n\n🛑 Scripta se je ustavila.`
+    ).catch(() => {});
+  } else {
+    await sendTelegram(
+      `❌ <b>IG Daily Plan — napaka</b>\n\n<code>${msg.slice(0, 400)}</code>`
+    ).catch(() => {});
+  }
+  process.exit(1);
+});
