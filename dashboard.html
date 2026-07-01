@@ -335,6 +335,18 @@
   </div>
 </div>
 
+<!-- Media modal -->
+<div id="mediaModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;align-items:center;justify-content:center;flex-direction:column;gap:16px" onclick="closeMediaModal(event)">
+  <div style="position:relative;max-width:400px;width:92vw;max-height:85vh;display:flex;flex-direction:column;align-items:center;gap:12px" onclick="event.stopPropagation()">
+    <div style="width:100%;display:flex;justify-content:space-between;align-items:center">
+      <div id="mediaModalTitle" style="font-size:14px;font-weight:600;color:#e8eaf6"></div>
+      <button onclick="closeMediaModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div id="mediaModalBody" style="width:100%;border-radius:12px;overflow:hidden;background:#000;max-height:75vh;display:flex;align-items:center;justify-content:center"></div>
+    <div id="mediaModalLinks" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"></div>
+  </div>
+</div>
+
 <div id="loginModal" style="display:none;position:fixed;inset:0;background:#0f1117;z-index:9999;align-items:center;justify-content:center">
   <div style="background:#1a1d27;border:1px solid #2e3350;border-radius:16px;padding:40px 36px;width:380px;max-width:90vw">
     <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(45deg,#fd1d1d,#e1306c,#833ab4);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:20px">📸</div>
@@ -418,6 +430,23 @@ async function loadContentBase() {
       for (const r of rows) {
         const types = Array.isArray(r['Type of content']) ? r['Type of content'] : (r['Type of content'] ? [r['Type of content']] : []);
         const angles = Array.isArray(r['Marketing Angle']) ? r['Marketing Angle'] : (r['Marketing Angle'] ? [r['Marketing Angle']] : []);
+
+        // Auto-detect Airtable attachment fields (arrays of objects with .url + .type)
+        let thumbURL = '', videoURL = '';
+        for (const val of Object.values(r)) {
+          if (!Array.isArray(val) || !val.length || typeof val[0] !== 'object') continue;
+          const att = val[0];
+          if (!att.url || !att.type) continue;
+          if (att.type.startsWith('video/') && !videoURL) {
+            videoURL = att.url;
+            thumbURL = thumbURL || (att.thumbnailUrls && (att.thumbnailUrls.full || att.thumbnailUrls.large)) || '';
+          } else if (att.type.startsWith('image/') && !thumbURL) {
+            thumbURL = (att.thumbnailUrls && (att.thumbnailUrls.large || att.thumbnailUrls.full)) || att.url;
+          }
+        }
+        // Fallback thumb from explicit field
+        if (!thumbURL) thumbURL = r['Thumbnail URL'] || r['thumbnail_url'] || '';
+
         all.push({
           id: r.id,
           Model: modelName,
@@ -434,6 +463,8 @@ async function loadContentBase() {
           MarketingAngles: angles,
           FileURL: r['url'] || '',
           ContentPlan: r['Content plan'] || '',
+          ThumbURL: thumbURL,
+          VideoURL: videoURL,
         });
       }
     } catch(e) { console.warn('Skipping table', tbl, e.message); }
@@ -513,10 +544,21 @@ function renderReady() {
       const borderColor = isReel ? 'var(--purple)' : 'var(--blue)';
       const icon        = isReel ? '🎬' : '📸';
       const pillClass   = isReel ? 'pill-purple' : 'pill-blue';
+      const canPlay     = !!(c.VideoURL || c.FileURL);
+      const dataAttrs   = `data-video="${c.VideoURL||''}" data-air="${c.FileURL||''}" data-title="${(c.SetName||'').replace(/"/g,'&quot;')}"`;
 
       html += `
       <div style="background:var(--surface2);border:1px solid var(--border);border-top:3px solid ${borderColor};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-        <div style="width:100%;aspect-ratio:9/16;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:48px;max-height:200px">${icon}</div>
+        <div style="position:relative;width:100%;aspect-ratio:9/16;background:#111;overflow:hidden;max-height:220px;cursor:${canPlay?'pointer':'default'}"
+             ${canPlay ? `onclick="openMediaModal(this)" ${dataAttrs}` : ''}>
+          ${c.ThumbURL
+            ? `<img src="${c.ThumbURL}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`
+            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px">${icon}</div>`
+          }
+          ${canPlay ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3)">
+            <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-size:20px">▶</div>
+          </div>` : ''}
+        </div>
         <div style="padding:12px;flex:1;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
             ${c.Types.map(t => `<span class="pill ${pillClass}">${t}</span>`).join('')}
@@ -694,6 +736,46 @@ function getTrialReelsForWeek(week) {
   const arr = (s ? s.Value : '0,0,1,2').split(',').map(v => parseInt(v.trim()) || 0);
   const idx = Math.max(0, week - 1);
   return arr[Math.min(idx, arr.length - 1)];
+}
+
+// ─── Media modal ──────────────────────────────────────────────────────────
+function openMediaModal(el) {
+  const videoURL = el.dataset.video;
+  const airURL   = el.dataset.air;
+  const title    = el.dataset.title;
+
+  document.getElementById('mediaModalTitle').textContent = title || '';
+
+  const body = document.getElementById('mediaModalBody');
+  if (videoURL) {
+    body.innerHTML = `<video src="${videoURL}" controls autoplay playsinline
+      style="width:100%;max-height:75vh;border-radius:12px;display:block"></video>`;
+  } else if (airURL) {
+    // Air doesn't support iframe embed — open in new tab and show a nice placeholder
+    window.open(airURL, '_blank');
+    return;
+  }
+
+  const links = document.getElementById('mediaModalLinks');
+  links.innerHTML = [
+    airURL ? `<a href="${airURL}" target="_blank" style="font-size:12px;font-weight:600;color:#4f9cf9;text-decoration:none;background:rgba(79,156,249,.15);padding:6px 14px;border-radius:8px">↗ Odpri v Air</a>` : '',
+    videoURL ? `<a href="${videoURL}" download style="font-size:12px;font-weight:600;color:#a8e6a3;text-decoration:none;background:rgba(168,230,163,.15);padding:6px 14px;border-radius:8px">⬇ Prenesi</a>` : '',
+  ].join('');
+
+  const modal = document.getElementById('mediaModal');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMediaModal(e) {
+  if (e && e.target !== document.getElementById('mediaModal')) return;
+  const modal = document.getElementById('mediaModal');
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+  // Stop video playback
+  const vid = modal.querySelector('video');
+  if (vid) vid.pause();
+  document.getElementById('mediaModalBody').innerHTML = '';
 }
 
 function daysSinceDate(dateStr) {
