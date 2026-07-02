@@ -212,6 +212,13 @@
       <select id="readyAccount" onchange="renderReady()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:12px">
         <option value="all">Vsi računi</option>
       </select>
+      <select id="readySort" onchange="renderReady()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:12px">
+        <option value="date">Razvrsti: 📅 Datum posta</option>
+        <option value="angle">Razvrsti: 🎯 Marketing angle</option>
+        <option value="outfit">Razvrsti: 👗 Outfit</option>
+        <option value="set">Razvrsti: 📁 SET name</option>
+        <option value="posted">Razvrsti: 🔁 Št. postanj</option>
+      </select>
     </div>
   </div>
 
@@ -389,7 +396,7 @@ const __INJECTED_PASS__ = '__DASH_PASS__';
 const INJECTED_KEY  = __INJECTED_KEY__.startsWith('__') ? '' : __INJECTED_KEY__;
 const INJECTED_PASS = __INJECTED_PASS__.startsWith('__') ? '' : __INJECTED_PASS__;
 
-function getApiKey() { return INJECTED_KEY || localStorage.getItem('ig_api_key') || ''; }
+function getApiKey() { return INJECTED_KEY || window.__IG_API_KEY__ || localStorage.getItem('ig_api_key') || ''; }
 function getPass()   { return INJECTED_PASS || 'localdev'; }
 
 function saveApiKey() {
@@ -461,8 +468,8 @@ async function loadContentBase() {
             thumbURL = (att.thumbnailUrls && (att.thumbnailUrls.large || att.thumbnailUrls.full)) || att.url;
           }
         }
-        // Fallback thumb from explicit field
-        if (!thumbURL) thumbURL = r['Thumbnail URL'] || r['thumbnail_url'] || '';
+        // Fallback thumb from explicit field (scraped from air.inc by update_thumbs.js)
+        if (!thumbURL) thumbURL = r['Thumb URL'] || r['Thumbnail URL'] || r['thumbnail_url'] || '';
 
         all.push({
           id: r.id,
@@ -480,6 +487,9 @@ async function loadContentBase() {
           MarketingAngles: angles,
           FileURL: r['url'] || '',
           ContentPlan: r['Content plan'] || '',
+          TextOverlay: r['Text Overlay'] || '',
+          TimesPosted: r['Times Posted'] || 0,
+          DatesPosted: r['Dates posted'] || '',
           ThumbURL: thumbURL,
           VideoURL: videoURL,
         });
@@ -636,33 +646,98 @@ function contentCardHtml(c) {
   const pillClass   = isReel ? 'pill-purple' : 'pill-blue';
   const canPlay     = !!(c.VideoURL || c.FileURL);
   const dataAttrs   = `data-video="${c.VideoURL||''}" data-air="${c.FileURL||''}" data-title="${(c.SetName||'').replace(/"/g,'&quot;')}"`;
+  const overlayEsc  = (c.TextOverlay||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
   return `
   <div style="background:var(--surface2);border:1px solid var(--border);border-top:3px solid ${borderColor};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-    <div style="position:relative;width:100%;aspect-ratio:9/16;background:#111;overflow:hidden;max-height:220px;cursor:${canPlay?'pointer':'default'}"
+    <div style="position:relative;width:100%;aspect-ratio:9/16;background:#111;overflow:hidden;max-height:260px;cursor:${canPlay?'pointer':'default'}"
          ${canPlay ? `onclick="openMediaModal(this)" ${dataAttrs}` : ''}>
       ${c.ThumbURL
-        ? `<img src="${c.ThumbURL}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`
+        ? `<img src="${c.ThumbURL}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`
         : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px">${icon}</div>`
       }
-      ${canPlay ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3)">
+      ${canPlay ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25)">
         <div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font-size:20px">▶</div>
       </div>` : ''}
     </div>
-    <div style="padding:12px;flex:1;display:flex;flex-direction:column;gap:6px">
+    <div style="padding:12px;flex:1;display:flex;flex-direction:column;gap:7px">
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
         ${c.Types.map(t => `<span class="pill ${pillClass}">${t}</span>`).join('')}
         <span style="font-size:10px;color:var(--muted);margin-left:4px">${c.Model}</span>
       </div>
       ${c.SetName ? `<div style="font-size:13px;font-weight:600;color:var(--text)">${c.SetName}</div>` : ''}
-      ${c.MarketingAngles.length ? `<div style="font-size:11px;color:var(--muted)">${c.MarketingAngles.join(', ')}</div>` : ''}
+      ${c.MarketingAngles.length ? `<div style="font-size:13px;font-weight:700;color:#e1306c">🎯 ${c.MarketingAngles.join(', ')}</div>` : ''}
+      ${c.Outfit ? `<div style="font-size:13px;font-weight:600;color:var(--text)">👗 ${c.Outfit}</div>` : ''}
+      ${c.TextOverlay ? `
+      <div style="background:rgba(255,255,255,.05);border:1px dashed var(--border);border-radius:8px;padding:8px 10px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">✍️ Text overlay</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.4">${c.TextOverlay}</div>
+        <button onclick="copyOverlay(this,'${overlayEsc}')" style="margin-top:6px;background:rgba(79,156,249,.12);border:none;color:var(--blue);font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer">📋 Kopiraj</button>
+      </div>` : ''}
       ${c.DateToPost ? `<div style="font-size:11px;color:var(--green)">📅 Post: ${c.DateToPost}</div>` : ''}
       ${c.Background ? `<div style="font-size:11px;color:var(--muted)">🎨 ${c.Background}</div>` : ''}
-      ${c.Outfit ? `<div style="font-size:11px;color:var(--muted)">👗 ${c.Outfit}</div>` : ''}
-      <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap;padding-top:4px">
-        ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:4px 10px;border-radius:6px">↗ Odpri v Air</a>` : ''}
+      ${c.TimesPosted ? `<div style="font-size:11px;color:var(--muted)">🔁 Postano ${c.TimesPosted}×</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap;padding-top:4px;align-items:center">
+        ${c.FileURL ? `<a href="${c.FileURL}" target="_blank" style="font-size:11px;font-weight:600;color:var(--blue);text-decoration:none;background:rgba(79,156,249,.1);padding:5px 10px;border-radius:6px">↗ Air</a>` : ''}
+        <button onclick="markPosted(this,'${c.Table.replace(/'/g,"\\'")}','${c.id}')"
+                style="flex:1;background:rgba(76,217,100,.12);border:1px solid rgba(76,217,100,.35);color:#4cd964;font-size:12px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer">✓ Posted</button>
       </div>
     </div>
   </div>`;
+}
+
+function copyOverlay(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Kopirano!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
+}
+
+async function markPosted(btn, table, recId) {
+  const c = state.content.find(x => x.id === recId);
+  if (!c) return;
+  btn.disabled = true; btn.textContent = '⏳ ...';
+  const today = new Date().toISOString().split('T')[0];
+  const newDates = (c.DatesPosted ? c.DatesPosted.trimEnd() + '\n' : '') + today;
+  try {
+    const r = await fetch(`${AT_CONTENT}/${encodeURIComponent(table)}/${recId}`, {
+      method: 'PATCH',
+      headers: { ...HDR(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: { 'Status': 'Posted', 'Times Posted': (c.TimesPosted || 0) + 1, 'Dates posted': newDates },
+        typecast: true,   // auto-creates the "Posted" select choice if missing
+      }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    c.Status = 'Posted'; c.TimesPosted = (c.TimesPosted || 0) + 1; c.DatesPosted = newDates;
+    btn.textContent = '✓ Posted!';
+    btn.style.background = '#4cd964'; btn.style.color = '#0f1117'; btn.style.border = 'none';
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '❌ Napaka';
+    console.error(e);
+    setTimeout(() => { btn.textContent = '✓ Posted'; }, 2500);
+  }
+}
+
+// ─── Sorting helpers ──────────────────────────────────────────────────────
+function sortContentList(items) {
+  const mode = (document.getElementById('readySort') || {}).value || 'date';
+  const key = {
+    date:   c => c.DateToPost || '9999',
+    angle:  c => (c.MarketingAngles[0] || 'zzz').toLowerCase(),
+    outfit: c => (c.Outfit || 'zzz').toLowerCase(),
+    set:    c => (c.SetName || 'zzz').toLowerCase(),
+    posted: c => c.TimesPosted || 0,
+  }[mode];
+  items.sort((a, b) => {
+    const ka = key(a), kb = key(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+}
+
+function sortContentGroups(grouped) {
+  for (const items of Object.values(grouped)) sortContentList(items);
 }
 
 // ─── Ready to Post tab ────────────────────────────────────────────────────
@@ -693,23 +768,31 @@ function renderReady() {
     accNames.map(a => `<option value="${a}" ${a===cur?'selected':''}>${a}</option>`).join('');
 
   if (hasRules) {
-    // Group content by account based on Marketing Angle rules
+    // Assign each content item to exactly ONE account (balanced among accounts
+    // whose Marketing Angle rules match) — no duplicates across accounts.
     const grouped = {}; // account → [contentItems]
     const unmatched = [];
+    const counts = {};  // account → assigned count (for balancing)
+    const ruleAccounts = Object.keys(rules).sort();
+    for (const a of ruleAccounts) counts[a] = 0;
 
     for (const c of ready) {
       if (typeFilter !== 'all' && !c.Types.includes(typeFilter)) continue;
-      let matched = false;
-      for (const [acc, allowed] of Object.entries(rules)) {
-        if (accFilter !== 'all' && acc !== accFilter) continue;
-        if (contentMatchesAccount(c, allowed)) {
-          if (!grouped[acc]) grouped[acc] = [];
-          grouped[acc].push(c);
-          matched = true;
-        }
+      const candidates = ruleAccounts.filter(acc => contentMatchesAccount(c, rules[acc]));
+      if (!candidates.length) {
+        if (accFilter === 'all') unmatched.push(c);
+        continue;
       }
-      if (!matched && accFilter === 'all') unmatched.push(c);
+      // Pick the matching account with the fewest items so far (stable spread)
+      const acc = candidates.reduce((best, a) => counts[a] < counts[best] ? a : best, candidates[0]);
+      counts[acc]++;
+      if (accFilter !== 'all' && acc !== accFilter) continue;
+      if (!grouped[acc]) grouped[acc] = [];
+      grouped[acc].push(c);
     }
+
+    sortContentGroups(grouped);
+    sortContentList(unmatched);
 
     let html = '';
     for (const [acc, items] of Object.entries(grouped)) {
@@ -755,6 +838,7 @@ function renderReady() {
       if (!grouped[grp]) grouped[grp] = [];
       grouped[grp].push(c);
     }
+    sortContentGroups(grouped);
 
     let html = `<div style="background:rgba(225,48,108,.08);border:1px solid rgba(225,48,108,.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--muted)">
       📋 Ni nastavljenih pravil — content je grupiran po modelu. Nastavi pravila v zavihku <strong style="color:var(--text)">📋 Pravila</strong> da se sortira po računih.
